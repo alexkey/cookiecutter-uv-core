@@ -1,0 +1,3 @@
+FROM ghcr.io/astral-sh/uv:{{ cookiecutter.uv_version }}-python{{ cookiecutter.python_majmin }}-bookworm-slim
+
+ARG DEBIAN_FRONTEND=noninteractive
