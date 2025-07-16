@@ -3,13 +3,21 @@
     "service_name": "{{ cookiecutter.name | lower }}",
     "repo_name": "{{ cookiecutter.service_name | replace('-', '_') }}",
     "version": "0.1.0",
+    "brief": "Just foo bar",
+    "description": "A modern Python project template powered by cookiecutter that provides a comprehensive\ndevelopment environment using uv for dependency management.\n\nThe template includes a set of tools and configurations for building, testing,\npackaging, and distributing Python applications with Docker support.\nIt features integrated quality assurance tools, testing infrastructure, dependency\nanalysis, and containerization capabilities with multi-platform support.",
+    "author_name": "John Doe",
+    "author_email": "john.doe@example.com",
+    "url": "https://example.com",
+    "license": "BSD-3-Clause",
+    "year": "{% now 'local', '%Y' %}",
 
-    "uv_version": "0.6.14",
-    "python_version": "3.13.3",
+    "uv_version": "0.7.20",
+    "python_version": "3.13.5",
     "python_majmin": "{{ cookiecutter.python_version.rsplit('.', 1)[0] }}",
 
     "docker_build_platform": "linux/amd64",
     "docker_compose_name": "{{ cookiecutter.service_name }}",
+    "docker_env_path": "/opt/{{ cookiecutter.repo_name }}/.venv",
 
     "redis_image_tag": "7.4.2-alpine",
     "postgres_image_tag": "17.4-alpine",

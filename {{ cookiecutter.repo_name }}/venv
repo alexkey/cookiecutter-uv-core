@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    echo "ERROR: This script must be sourced." \
+         "Use: source ${BASH_SOURCE[0]} [</path/to/venv>]" \
+    >&2
+    exit 1
+fi
+
+#---
+# Helper script to activate Python virtual environments
+#---
+# Searches for virtualenv in the following order:
+# * User-specified path (if </path/to/venv> were given).
+# * Docker environment path ({{ cookiecutter.docker_env_path }}).
+# * Local project path (.venv).
+
+
+main() {
+    local user_prefix="${1:-}"
+    local primary_prefix="{{ cookiecutter.docker_env_path }}"
+    local secondary_prefix="${PWD}/.venv"
+    local prefix=""
+
+    # Find the first valid path.
+    if [[ -n "${user_prefix}" ]] && [[ -d "${user_prefix}" ]]; then
+        prefix="${user_prefix}"
+
+    elif [[ -d "${primary_prefix}" ]]; then
+        prefix="${primary_prefix}"
+
+    elif [[ -d "${secondary_prefix}" ]]; then
+        prefix="${secondary_prefix}"
+
+    else
+        echo "ERROR: No valid virtual environment found" >&2
+        return 2
+    fi
+
+
+    local activate_script="${prefix}/bin/activate"
+
+    if [[ ! -f "${activate_script}" ]]; then
+        echo "ERROR: Virtual environment activation script not found:" \
+             "\`${activate_script}\`" \
+        >&2
+        return 3
+    fi
+
+    echo "Activating virtual environment: \`${prefix}\`..."
+    source "${activate_script}"
+}
+
+
+main "$@"

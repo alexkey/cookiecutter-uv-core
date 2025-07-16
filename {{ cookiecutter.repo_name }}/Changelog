@@ -1,0 +1,6 @@
+{{ cookiecutter.service_name }}  {{ cookiecutter.version }}  {% now "local", "%Y-%m-%d" %}  {{ cookiecutter.author_name }}  <{{ cookiecutter.author_email }}>
+
+* Initial changeset: added the skeleton of the project.
+
+
+;;

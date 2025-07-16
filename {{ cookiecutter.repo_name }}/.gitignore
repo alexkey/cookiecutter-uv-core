@@ -1,0 +1,25 @@
+# Variable data
+*.aux
+*.log
+*.out
+*.pdf
+*~
+/var/
+.DS_Store
+
+# Editors
+*.sublime-workspace
+.vscode
+
+# Python
+*.dist-info
+*.egg-info
+*.py[cod]
+*.so
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+build
+dist
