@@ -1,0 +1,99 @@
+[project]
+name = "{{ cookiecutter.service_name }}"
+version = "{{ cookiecutter.version }}"
+# Dynamic versioning is currently disabled due to:
+# https://github.com/astral-sh/uv/issues/8714
+#
+# dynamic = ["version"]
+
+description = "{{ cookiecutter.brief }}"
+license = "{{ cookiecutter.license }}"  # <- or "LicenseRef-Proprietary"
+authors = [
+    { name="{{ cookiecutter.author_name }}", email="{{ cookiecutter.author_email }}" },
+]
+maintainers = [
+    { name="{{ cookiecutter.author_name }}", email="{{ cookiecutter.author_email }}" },
+]
+readme = "README.rst"
+homepage = "{{ cookiecutter.url }}"
+repository = "{{ cookiecutter.repository }}"
+documentation = ""
+keywords = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Natural Language :: English",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: {{ cookiecutter.python_majmin }}",
+]
+requires-python = "~={{ cookiecutter.python_version }}"
+dependencies = [
+    "alembic~=1.16.4",
+    "celery~=5.5.3",
+    "fastapi~=0.116.1",
+    "httpx~=0.28.1",
+    "jinja2~=3.1.6",
+    "pydantic-settings~=2.10.1",
+    "pydantic~=2.11.7",
+    "redis~=6.2.0",
+    "sqlalchemy[postgresql-asyncpg]~=2.0.41",
+    "uvicorn[standard]~=0.35.0",
+]
+
+[project.optional-dependencies]
+
+[project.scripts]
+# Defines entry points for command-line execution.
+# Example: `python -m {{ cookiecutter.service_name }}` to run the package.
+
+# {{ cookiecutter.service_name }} = "app.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.7.21,<0.8.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# The following directory structure is assumed for the source layout:
+#
+# pyproject.toml
+# src
+# └── foo
+#     ├── bar
+#     │   └── __init__.py
+#     └── baz
+#         └── __init__.py
+module-name = "{{ cookiecutter.repo_name }}"
+namespace = true
+
+[tool.uv]
+# Setting `tool.uv.package = true` forces the project to be built and installed
+# into the project environment.
+package = true
+
+dev-dependencies = [
+    "deptry==0.23.0",
+    "icecream>=2.1.5",
+    "mypy==1.17.0",
+    "pylint==3.3.7",
+    "pytest-asyncio~=1.1.0",
+    "pytest-repeat>=0.9.4",
+    "pytest~=8.4.1",
+    "ruff==0.12.4",
+    "ty==0.0.1a14",
+    "watchfiles>=1.1.0",
+]
+
+[tool.deptry.per_rule_ignores]
+DEP001 = [
+    # Imported but missing from the dependency definitions.
+
+    # The application itself shouldn't be specified as a dependency.
+    "{{ cookiecutter.service_name }}",
+]
+DEP002 = [
+    # Defined as a dependency but not used in the codebase.
+    "uvicorn",
+]
+DEP004 = [
+    # Imported but declared as a dev dependency.
+    "pytest",
+]

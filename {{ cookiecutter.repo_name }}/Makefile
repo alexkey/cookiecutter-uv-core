@@ -23,7 +23,7 @@ distdir = $(CURDIR)/dist
 PACKAGE_NAME = {{ cookiecutter.repo_name }}
 PACKAGE_VERSION ?= $(strip \
 	$(shell \
-		grep "__version__" "${srcdir}/{{ cookiecutter.repo_name }}/app/__init__.py" \
+		grep "^ *version *= *" "${CURDIR}/pyproject.toml" \
 		| tr -d '"' \
 		| cut -d " " -f3 \
 	) \
@@ -78,11 +78,22 @@ ifeq ($(shell which ${UV}),)
 	UV_CACHE_DIR = "$(HOME)/.cache/uv"
 endif
 
-# TODO(axk): ///
-
-UV_LOCKFILE = $(CURDIR)/uv.lock
 VIRTUALENV = $(if \
 	${UV_PROJECT_ENVIRONMENT},${UV_PROJECT_ENVIRONMENT},${CURDIR}/.venv)
+UV_LOCKFILE = $(CURDIR)/uv.lock
+
+# A set of common options for the most frequently used `uv` commands.
+UV_CMD_OPTS = \
+	--directory="$(CURDIR)" \
+	--python-preference=only-managed
+
+UV_LOCK_EXTRA_OPTS ?=
+UV_SYNC_EXTRA_OPTS ?=
+
+INSTALL_EXTRAS ?=
+ifdef INSTALL_EXTRAS
+	UV_SYNC_OPT_DEPS = $(foreach extra,${INSTALL_EXTRAS}, --extra=${extra})
+endif
 
 ##
 # Docker
@@ -116,8 +127,8 @@ export CURDIR="$(CURDIR)" ; \
 export DOCKER_IMAGE_NAME="$(DOCKER_IMAGE_NAME)" ; \
 export DOCKER_BUILD_PLATFORM="$(DOCKER_BUILD_PLATFORM)" ; \
 export DOCKER_MOUNT_POINT="$(DOCKER_MOUNT_POINT)" ; \
-export DOCKER_SERVICE_PORT="$(DOCKER_SERVICE_PORT)"
-export DOCKER_CONTAINER_PORT="$(DOCKER_CONTAINER_PORT)" ; \
+export DOCKER_SERVICE_PORT="$(DOCKER_SERVICE_PORT)" ; \
+export DOCKER_CONTAINER_PORT="$(DOCKER_CONTAINER_PORT)"
 endef
 
 ##
@@ -148,9 +159,11 @@ PYLINT = pylint
 PYLINT_OPTS = \
 	--output-format=colorized
 PYTEST = pytest
+PYTEST_UNIT_DIR = main
+PYTEST_SYSTEM_DIR = system
+PYTEST_DURATIONS ?= 10
 PYTEST_LOG_CLI ?= false
 PYTEST_LOG_CLI_LEVEL ?= INFO
-PYTEST_DURATIONS ?= 10
 PYTEST_OPTS = \
 	-vv \
 	--capture=no \
@@ -162,8 +175,6 @@ PYTEST_OPTS = \
 #                        #    * Handles mixed synchronous/asynchronous tests
 #                        #    * Ensures proper loop cleanup
 PYTEST_EXTRA_OPTS ?=
-PYTEST_UNIT_DIR = main
-PYTEST_SYSTEM_DIR = system
 PYTEST_CUSTOM_PATH ?=
 define PYTEST_EXPORTS
 # Optionally add exports to be passed to Pytest HERE.
@@ -206,6 +217,14 @@ endif
 			"${UV_VERSION})" ; \
 	fi
 
+.PHONY: env-check-venv
+# target: env-check-venv - Ensure the virtual environment exists
+env-check-venv:
+ifeq ($(wildcard ${VIRTUALENV}),)
+	$(error The virtual environment is missing at the target path: \
+		`${VIRTUALENV}`)
+endif
+
 .PHONY: env-check-lockfile
 # target: env-check-lockfile - Ensure the lockfile exists
 env-check-lockfile:
@@ -217,12 +236,38 @@ endif
 		error \
 	)
 
-.PHONY: env-check-venv
-# target: env-check-venv - Ensure the virtual environment exists
-env-check-venv:
-ifeq ($(wildcard ${VIRTUALENV}),)
-	$(error The virtual environment is missing at the target path: \
-		`${VIRTUALENV}`)
+.PHONY: env-show-python
+# target: env-show-python - Display the environment variables used to configure Python and related tools
+env-show-python:
+	$(info UV_VERSION -> `$(UV_VERSION)`)
+	$(info UV_CACHE_DIR -> `$(UV_CACHE_DIR)`)
+	$(info VIRTUALENV -> `$(VIRTUALENV)`)
+	$(info UV_LOCKFILE -> `$(UV_LOCKFILE)`)
+	$(info UV_CMD_OPTS -> `$(UV_CMD_OPTS)`)
+
+ifdef UV_LOCK_EXTRA_OPTS
+	$(info UV_LOCK_EXTRA_OPTS -> `$(UV_LOCK_EXTRA_OPTS)`)
+else
+	$(info UV_LOCK_EXTRA_OPTS:)
+	$(info ${\t}Use "--upgrade" to allow package upgrades, ignoring pinned \
+		versions)
+	$(info ${\t}Use "--upgrade-package=<name>" to allow upgrades for the \
+		specified package)
+endif
+
+ifdef UV_SYNC_EXTRA_OPTS
+	$(info UV_SYNC_EXTRA_OPTS -> `$(UV_SYNC_EXTRA_OPTS)`)
+else
+	$(info UV_SYNC_EXTRA_OPTS:)
+	$(info ${\t}Use "--all-extras" to include all optional dependencies)
+	$(info ${\t}Use "--inexact" to keep extraneous packages present in the \
+		environment)
+	$(info ${\t}Use "--reinstall" to refresh all cached data and reinstall \
+		all packages)
+endif
+
+ifdef INSTALL_EXTRAS
+	$(info INSTALL_EXTRAS -> `$(INSTALL_EXTRAS)`)
 endif
 
 .PHONY: env-check-docker
@@ -242,23 +287,64 @@ env-check-qa: env-check-python
 .PHONY: env-show-qa
 # target: env-show-qa - Display the environment variables used to configure the quality assurance tools
 env-show-qa:
+	$(info MYPY_OPTS -> `$(MYPY_OPTS)`)
+	$(info PYLINT_OPTS -> `$(PYLINT_OPTS)`)
+
+	$(info PYTEST_UNIT_DIR -> `$(PYTEST_UNIT_DIR)`)
+	$(info PYTEST_SYSTEM_DIR -> `$(PYTEST_SYSTEM_DIR)`)
+
+ifdef PYTEST_DURATIONS
+	$(info PYTEST_DURATIONS -> `$(PYTEST_DURATIONS)`)
+endif
 ifdef PYTEST_LOG_CLI
 	$(info PYTEST_LOG_CLI -> `$(PYTEST_LOG_CLI)`)
 endif
 ifdef PYTEST_LOG_CLI_LEVEL
 	$(info PYTEST_LOG_CLI_LEVEL -> `$(PYTEST_LOG_CLI_LEVEL)`)
 endif
+
+	$(info PYTEST_OPTS -> `$(PYTEST_OPTS)`)
 ifdef PYTEST_EXTRA_OPTS
 	$(info PYTEST_EXTRA_OPTS -> `$(PYTEST_EXTRA_OPTS)`)
 else
 	$(info PYTEST_EXTRA_OPTS: Use "--skip-slow" to exclude slow tests)
 endif
+
 ifdef PYTEST_CUSTOM_PATH
 	$(info PYTEST_CUSTOM_PATH -> `$(PYTEST_CUSTOM_PATH)`)
 else
 	$(info PYTEST_CUSTOM_PATH: Use "/path/to/test.py::TestClass::test_method" to run a \
 		single test `test_method` from the suite `TestClass` of the `test.py`)
 endif
+ifdef PYTEST_EXPORTS
+	$(info PYTEST_EXPORTS -> `$(PYTEST_EXPORTS)`)
+endif
+
+##
+# Python
+
+.PHONY: venv
+# target: venv - Create a virtual environment
+venv: env-check-python
+ifneq ($(wildcard ${VIRTUALENV}),)
+	$(error A virtual environment already exists at the target path: \
+		`${VIRTUALENV}`)
+endif
+	@$(UV) venv $(UV_CMD_OPTS) --seed "$(VIRTUALENV)"
+
+.PHONY: requirements
+# target: requirements - Update the project's lockfile
+requirements: env-check-python
+# If the project lockfile (`uv.lock`) does not exist, it will be created.
+# If a lockfile is present, its contents will be used as preferences for the
+# resolution process.
+	@$(UV) lock $(UV_CMD_OPTS) $(UV_LOCK_EXTRA_OPTS)
+
+.PHONY: install
+# target: install - Ensure that all project dependencies are up to date with the lockfile
+install: env-check-python env-check-venv env-check-lockfile
+	@$(UV) sync $(UV_CMD_OPTS) --locked \
+		$(UV_SYNC_OPT_DEPS) $(UV_SYNC_EXTRA_OPTS)
 
 ##
 # Auxiliary
