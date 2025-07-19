@@ -43,9 +43,9 @@ dependencies = [
 
 [project.scripts]
 # Defines entry points for command-line execution.
-# Example: `python -m {{ cookiecutter.service_name }}` to run the package.
+# Example: `[uv run] {{ cookiecutter.service_name }}` to run the package.
 
-# {{ cookiecutter.service_name }} = "app.__main__:main"
+{{ cookiecutter.service_name }} = "{{ cookiecutter.repo_name }}.app.__main__:main"
 
 [build-system]
 requires = ["uv_build>=0.7.21,<0.8.0"]

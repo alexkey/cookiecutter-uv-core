@@ -239,6 +239,7 @@ endif
 .PHONY: env-show-python
 # target: env-show-python - Display the environment variables used to configure Python and related tools
 env-show-python:
+	$(info PYTHON_VERSION_FILE -> `$(PYTHON_VERSION_FILE)`)
 	$(info UV_VERSION -> `$(UV_VERSION)`)
 	$(info UV_CACHE_DIR -> `$(UV_CACHE_DIR)`)
 	$(info VIRTUALENV -> `$(VIRTUALENV)`)
