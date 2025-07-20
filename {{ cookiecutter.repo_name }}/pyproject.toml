@@ -8,6 +8,9 @@ version = "{{ cookiecutter.version }}"
 
 description = "{{ cookiecutter.brief }}"
 license = "{{ cookiecutter.license }}"  # <- or "LicenseRef-Proprietary"
+license-files = [
+    "LICENSE",
+]
 authors = [
     { name="{{ cookiecutter.author_name }}", email="{{ cookiecutter.author_email }}" },
 ]
@@ -63,6 +66,19 @@ build-backend = "uv_build"
 #         └── __init__.py
 module-name = "{{ cookiecutter.repo_name }}"
 namespace = true
+
+# When building a source distribution, all files matching the specified
+# patterns are included:
+source-include = []
+
+# The default exclusions (__pycache__, *.pyc, and *.pyo) are disabled when the
+# following are explicitly specified:
+source-exclude = []
+
+# When building a wheel, all directories listed below are included.
+# For details, see:
+# https://docs.astral.sh/uv/reference/settings/#build-backend_data
+data = []
 
 [tool.uv]
 # Setting `tool.uv.package = true` forces the project to be built and installed

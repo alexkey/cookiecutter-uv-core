@@ -86,9 +86,12 @@ UV_LOCKFILE = $(CURDIR)/uv.lock
 UV_CMD_OPTS = \
 	--directory="$(CURDIR)" \
 	--python-preference=only-managed
+UV_BUILD_OPTS = \
+	--verify-hashes
 
 UV_LOCK_EXTRA_OPTS ?=
 UV_SYNC_EXTRA_OPTS ?=
+UV_BUILD_EXTRA_OPTS ?=
 
 INSTALL_EXTRAS ?=
 ifdef INSTALL_EXTRAS
@@ -245,6 +248,7 @@ env-show-python:
 	$(info VIRTUALENV -> `$(VIRTUALENV)`)
 	$(info UV_LOCKFILE -> `$(UV_LOCKFILE)`)
 	$(info UV_CMD_OPTS -> `$(UV_CMD_OPTS)`)
+	$(info UV_BUILD_OPTS -> `$(UV_BUILD_OPTS)`)
 
 ifdef UV_LOCK_EXTRA_OPTS
 	$(info UV_LOCK_EXTRA_OPTS -> `$(UV_LOCK_EXTRA_OPTS)`)
@@ -265,6 +269,13 @@ else
 		environment)
 	$(info ${\t}Use "--reinstall" to refresh all cached data and reinstall \
 		all packages)
+endif
+
+ifdef UV_BUILD_EXTRA_OPTS
+	$(info UV_BUILD_EXTRA_OPTS -> `$(UV_BUILD_EXTRA_OPTS)`)
+else
+	$(info UV_BUILD_EXTRA_OPTS:)
+	$(info ${\t}Use "--refresh" to refresh all cached data)
 endif
 
 ifdef INSTALL_EXTRAS
@@ -346,6 +357,15 @@ requirements: env-check-python
 install: env-check-python env-check-venv env-check-lockfile
 	@$(UV) sync $(UV_CMD_OPTS) --locked \
 		$(UV_SYNC_OPT_DEPS) $(UV_SYNC_EXTRA_OPTS)
+
+.PHONY: dist
+# target: dist - Build Python packages
+dist: env-check-python
+# The default build strategy: build a source distribution ("sdist") from the
+# source directory, and a binary distribution ("wheel") from the source
+# distribution.
+	@$(UV) build $(UV_CMD_OPTS) $(UV_BUILD_OPTS) $(UV_BUILD_EXTRA_OPTS) \
+		"$(CURDIR)"
 
 ##
 # Auxiliary
