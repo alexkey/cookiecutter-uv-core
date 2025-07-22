@@ -1,7 +1,7 @@
 import importlib.metadata
 
 
-_distribution_name = "{{ cookiecutter.service_name }}"
+_DISTRIB_NAME = "{{ cookiecutter.service_name }}"
 
-__name__ = importlib.metadata.distribution(_distribution_name).name
-__version__ = importlib.metadata.version(_distribution_name)
+__project_name__ = importlib.metadata.distribution(_DISTRIB_NAME).name
+__version__ = importlib.metadata.version(_DISTRIB_NAME)

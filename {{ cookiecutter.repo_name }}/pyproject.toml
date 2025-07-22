@@ -60,12 +60,13 @@ build-backend = "uv_build"
 # pyproject.toml
 # src
 # └── foo
+#     ├── __init__.py
 #     ├── bar
 #     │   └── __init__.py
 #     └── baz
 #         └── __init__.py
 module-name = "{{ cookiecutter.repo_name }}"
-namespace = true
+namespace = false
 
 # When building a source distribution, all files matching the specified
 # patterns are included:
