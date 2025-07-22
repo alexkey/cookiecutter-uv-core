@@ -179,8 +179,28 @@ PYTEST_OPTS = \
 #                        #    * Ensures proper loop cleanup
 PYTEST_EXTRA_OPTS ?=
 PYTEST_CUSTOM_PATH ?=
+PYTEST_DEPLOYMENT ?= http://localhost:8000
+# Optionally add exports to be passed to Pytest HERE ==>
 define PYTEST_EXPORTS
-# Optionally add exports to be passed to Pytest HERE.
+:
+endef
+
+define show_notes_helper
+	@for tag in $(PACKAGE_NOTES); do \
+		echo -e "\n#---\n# $${tag}\n#---\n" ; \
+		$(GREP) --context=$(NOTES_CONTEXT) "[^=]\b$${tag}\b" $$( \
+			${1} \
+			| sort -u \
+			| ${SED} '${NOTES_EXCLUDE_FILTER}' \
+		) \
+		|| echo "Tag $${tag} not found" ; \
+	done
+endef
+
+define pytest_helper
+	@path="$(testdir)/$(1)" ; \
+	if [[ -n "$(PYTEST_CUSTOM_PATH)" ]]; then path+="/$(PYTEST_CUSTOM_PATH)" ; fi ; \
+		$(2) ; $(PYTEST) $(PYTEST_EXTRA_OPTS) $(PYTEST_OPTS) "$${path}"
 endef
 
 
@@ -325,9 +345,18 @@ endif
 ifdef PYTEST_CUSTOM_PATH
 	$(info PYTEST_CUSTOM_PATH -> `$(PYTEST_CUSTOM_PATH)`)
 else
-	$(info PYTEST_CUSTOM_PATH: Use "/path/to/test.py::TestClass::test_method" to run a \
-		single test `test_method` from the suite `TestClass` of the `test.py`)
+	$(info PYTEST_CUSTOM_PATH: Use "/path/to/test.py::TestClass::test_method" \
+		to run a single test `test_method` from the suite `TestClass` of the \
+		`test.py`)
 endif
+
+ifdef PYTEST_DEPLOYMENT
+	$(info PYTEST_DEPLOYMENT -> `$(PYTEST_DEPLOYMENT)`)
+else
+	$(info PYTEST_DEPLOYMENT: Specify the deployed service URL, e.g., \
+		"http://localhost:8000" for the local environment)
+endif
+
 ifdef PYTEST_EXPORTS
 	$(info PYTEST_EXPORTS -> `$(PYTEST_EXPORTS)`)
 endif
@@ -366,6 +395,82 @@ dist: env-check-python
 # distribution.
 	@$(UV) build $(UV_CMD_OPTS) $(UV_BUILD_OPTS) $(UV_BUILD_EXTRA_OPTS) \
 		"$(CURDIR)"
+
+##
+# Code quality
+
+.PHONY: show-notes
+# target: show-notes - List notes sorted by tag
+show-notes: env-check
+	$(call show_notes_helper, \
+		${GIT} ls-files --cached --others --exclude-standard \
+	)
+
+.PHONY: show-notes-recent
+# target: show-notes-recent - List notes from the GIT_DEPTH most recent commits and modified files
+show-notes-recent: env-check
+	$(call show_notes_helper, \
+		{ \
+			${GIT} log --no-merges --name-only --pretty=format: -n $(GIT_DEPTH) \
+				| grep -v "^$$" ; \
+			${GIT} diff --name-only ; \
+			${GIT} diff --name-only --staged ; \
+		} \
+	)
+
+.PHONY: check-deps
+# target: check-deps - Find unused, missing, and transitive dependencies
+check-deps: env-check-qa
+	@(cd "$(CURDIR)" && $(DEPTRY) \
+		"$(srcdir)" \
+		"$(testdir)" \
+	)
+
+.PHONY: check-ruff
+# target: check-ruff - Lint with Ruff
+check-ruff: env-check-qa
+	@$(RUFF) check "$(srcdir)" "$(testdir)"
+
+.PHONY: check-mypy
+# target: check-mypy - Perform static type checking with Mypy
+check-mypy: env-check-qa
+	@$(MYPY) $(MYPY_OPTS) "$(srcdir)" "$(testdir)"
+
+.PHONY: check-pylint
+# target: check-pylint - Perform code analysis with Pylint
+check-pylint: env-check-qa
+	@$(PYLINT) $(PYLINT_OPTS) "$(srcdir)" "$(testdir)"
+
+.PHONY: lint
+# target: lint - Run all available code analysis tools
+lint: check-ruff check-mypy check-pylint
+
+.PHONY: check-format
+# target: check-format - Detect unformatted files
+check-format: env-check-qa
+	@$(RUFF) format --check "$(srcdir)" "$(testdir)"
+
+.PHONY: format
+# target: format - Format all discovered Python files
+format: env-check-qa
+	@$(RUFF) check --select I --fix "$(srcdir)" "$(testdir)"
+	@$(RUFF) format "$(srcdir)" "$(testdir)"
+
+.PHONY: test
+# target: test - Run tests
+test: env-check-qa
+	$(call pytest_helper,${PYTEST_UNIT_DIR},:)
+
+.PHONY: autotest
+# target: autotest - Run system tests for the specified deployment
+autotest: env-check-qa
+ifndef PYTEST_DEPLOYMENT
+	$(error PYTEST_DEPLOYMENT: URL of the deployed service is required, e.g., \
+		"http://localhost:8000" for the local environment)
+else
+	$(info PYTEST_DEPLOYMENT -> `$(PYTEST_DEPLOYMENT)`)
+endif
+	$(call pytest_helper,${PYTEST_SYSTEM_DIR},${PYTEST_EXPORTS})
 
 ##
 # Auxiliary

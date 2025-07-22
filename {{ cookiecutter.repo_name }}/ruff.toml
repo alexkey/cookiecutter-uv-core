@@ -1,0 +1,5 @@
+[lint]
+ignore = []
+
+[format]
+quote-style = "double"

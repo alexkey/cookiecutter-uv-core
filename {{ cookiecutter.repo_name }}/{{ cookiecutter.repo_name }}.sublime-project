@@ -1,0 +1,33 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+
+    "settings": {
+        "python_interpreter": "$project_path/.venv/bin/python",
+
+
+        "LSP": {
+            "LSP-pyright": {
+                "settings": {
+                    "python.pythonPath": "$project_path/.venv/bin/python",
+                }
+            }
+        },
+
+        "SublimeLinter.linters.mypy.executable": "$project_path/.venv/bin/mypy",
+        "SublimeLinter.linters.mypy.config-file": "$project_path/mypy.ini",
+        "SublimeLinter.linters.mypy.args": [],
+
+        "SublimeLinter.linters.pylint.executable": "$project_path/.venv/bin/pylint",
+        "SublimeLinter.linters.pylint.config-file": "$project_path/pylintrc",
+        "SublimeLinter.linters.pylint.paths": [],
+        "SublimeLinter.linters.pylint.args": [],
+
+        "SublimeLinter.linters.ruff.executable": "$project_path/.venv/bin/ruff",
+        "SublimeLinter.linters.ruff.config-file": "$project_path/ruff.toml",
+        "SublimeLinter.linters.ruff.args": [],
+    }
+}
