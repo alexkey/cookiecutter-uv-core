@@ -20,7 +20,7 @@
     "docker_compose_name": "{{ cookiecutter.service_name }}",
     "docker_env_path": "/opt/{{ cookiecutter.repo_name }}/.venv",
 
-    "redis_image_tag": "7.4.2-alpine",
-    "postgres_image_tag": "17.4-alpine",
+    "redis_image_tag": "8.2.0-alpine",
+    "postgres_image_tag": "17.6-alpine",
     "postgres_user": "database"
 }

@@ -16,9 +16,17 @@ services:
       # If no specific IP address is provided, Docker will bind the port to all network
       # interfaces (0.0.0.0). As a result, the exposed port will be accessible
       # externally.
-      - "127.0.0.1:${DOCKER_SERVICE_PORT}:${DOCKER_CONTAINER_PORT}"
+      - "127.0.0.1:${DOCKER_HOST_PORT}:${DOCKER_CONTAINER_PORT}"
     expose:
       - "${DOCKER_CONTAINER_PORT}"
+    environment:
+      # Database
+      DATABASE_URL: "postgresql+asyncpg://database:database@postgres:5432/database"
+    command: [
+      "-c",
+      "./docker/scripts/wait_for_pg.py \
+      && /bin/bash"
+    ]
 
     # TODO(axk): ///
 

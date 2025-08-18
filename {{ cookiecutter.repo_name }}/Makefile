@@ -120,9 +120,16 @@ DOCKER_COMPOSE_FILE ?= $(CURDIR)/docker/docker-compose.yml
 DOCKER_SERVICE_NAME ?= {{ cookiecutter.service_name }}
 DOCKER_IMAGE_NAME ?= $(DOCKER_SERVICE_NAME):$(PACKAGE_VERSION)
 DOCKER_MOUNT_POINT = /usr/local/src/$(PACKAGE_NAME)
-DOCKER_SERVICE_PORT ?= 8000
 DOCKER_CONTAINER_PORT ?= 8000
+DOCKER_HOST_PORT ?= 8000
 DOCKER_COMMAND ?= $(SHELL)
+
+# List of variables to pass as build args.
+DOCKER_ARGS = \
+	PACKAGE_NAME \
+	DOCKER_MOUNT_POINT \
+	DOCKER_CONTAINER_PORT
+DOCKER_BUILD_ARGS = $(foreach arg,${DOCKER_ARGS}, --build-arg "${arg}=${$(arg)}")
 
 DOCKER_COMPOSE = $(DOCKER) compose $(DOCKER_EXTRA_OPTS)
 define DOCKER_COMPOSE_EXPORTS
@@ -130,8 +137,8 @@ export CURDIR="$(CURDIR)" ; \
 export DOCKER_IMAGE_NAME="$(DOCKER_IMAGE_NAME)" ; \
 export DOCKER_BUILD_PLATFORM="$(DOCKER_BUILD_PLATFORM)" ; \
 export DOCKER_MOUNT_POINT="$(DOCKER_MOUNT_POINT)" ; \
-export DOCKER_SERVICE_PORT="$(DOCKER_SERVICE_PORT)" ; \
-export DOCKER_CONTAINER_PORT="$(DOCKER_CONTAINER_PORT)"
+export DOCKER_CONTAINER_PORT="$(DOCKER_CONTAINER_PORT)" ; \
+export DOCKER_HOST_PORT="$(DOCKER_HOST_PORT)"
 endef
 
 ##
@@ -307,6 +314,36 @@ endif
 env-check-docker:
 	@$(call which_helper,${DOCKER})
 
+.PHONY: env-show-docker
+# target: env-show-docker - Display the environment variables used to configure Docker
+env-show-docker:
+	$(info DOCKER_BUILD_PLATFORM -> `$(DOCKER_BUILD_PLATFORM)`)
+
+	$(info DOCKER_PS_OPTS -> `$(DOCKER_PS_OPTS)`)
+	$(info DOCKER_RM_OPTS -> `$(DOCKER_RM_OPTS)`)
+	$(info DOCKER_SYSTEM_PRUNE_OPTS -> `$(DOCKER_SYSTEM_PRUNE_OPTS)`)
+ifdef DOCKER_EXTRA_OPTS
+	$(info DOCKER_EXTRA_OPTS -> `$(DOCKER_EXTRA_OPTS)`)
+else
+	$(info DOCKER_EXTRA_OPTS: Use "--progress=plain" to show container output)
+endif
+
+	$(info DOCKER_FILE -> `$(DOCKER_FILE)`)
+	$(info DOCKER_COMPOSE_FILE -> `$(DOCKER_COMPOSE_FILE)`)
+	$(info DOCKER_SERVICE_NAME -> `$(DOCKER_SERVICE_NAME)`)
+	$(info DOCKER_IMAGE_NAME -> `$(DOCKER_IMAGE_NAME)`)
+	$(info DOCKER_MOUNT_POINT -> `$(DOCKER_MOUNT_POINT)`)
+	$(info DOCKER_CONTAINER_PORT -> `$(DOCKER_CONTAINER_PORT)`)
+	$(info DOCKER_HOST_PORT -> `$(DOCKER_HOST_PORT)`)
+	$(info DOCKER_COMMAND -> `$(DOCKER_COMMAND)`)
+
+ifdef DOCKER_BUILD_ARGS
+	$(info DOCKER_BUILD_ARGS -> `$(DOCKER_BUILD_ARGS)`)
+endif
+ifdef DOCKER_COMPOSE_EXPORTS
+	$(info DOCKER_COMPOSE_EXPORTS -> `$(DOCKER_COMPOSE_EXPORTS)`)
+endif
+
 .PHONY: env-check-qa
 # target: env-check-qa - Check the requirements for the quality assurance tools
 env-check-qa: env-check-python
@@ -395,6 +432,73 @@ dist: env-check-python
 # distribution.
 	@$(UV) build $(UV_CMD_OPTS) $(UV_BUILD_OPTS) $(UV_BUILD_EXTRA_OPTS) \
 		"$(CURDIR)"
+
+##
+# Docker
+
+.PHONY: docker-info
+# target: docker-info - Show all images, containers, and volumes
+docker-info: env-check-docker
+	@$(DOCKER) images --all
+	@echo
+	@$(DOCKER) ps $(DOCKER_PS_OPTS)
+	@echo
+	@$(DOCKER) volume ls
+
+.PHONY: docker-build
+# target: docker-build - Build an image from the Dockerfile
+docker-build: env-check-docker
+	@$(DOCKER) buildx build --platform="$(DOCKER_BUILD_PLATFORM)" \
+		$(DOCKER_EXTRA_OPTS) \
+		$(DOCKER_BUILD_ARGS) \
+		--file "$(DOCKER_FILE)" \
+		--tag "$(DOCKER_IMAGE_NAME)" \
+	"$(CURDIR)"
+
+.PHONY: docker-run
+# target: docker-run - Create and run a new container from an image (temporarily)
+docker-run: env-check-docker
+ifndef DOCKER_EXTRA_OPTS
+	$(info DOCKER_EXTRA_OPTS: \
+		Use "--publish 127.0.0.1:${DOCKER_HOST_PORT}:${DOCKER_CONTAINER_PORT}" \
+		to bind port ${DOCKER_CONTAINER_PORT} of the container \
+		to TCP port ${DOCKER_HOST_PORT} on 127.0.0.1 of the host)
+endif
+	@$(DOCKER) run \
+		$(DOCKER_EXTRA_OPTS) \
+		--interactive \
+		--rm \
+		--tty \
+		--volume "$(CURDIR):$(DOCKER_MOUNT_POINT)" \
+	"$(DOCKER_IMAGE_NAME)"
+
+.PHONY: docker-compose
+# target: docker-compose - Create and start containers, start any linked services
+docker-compose: env-check-docker
+	@$(DOCKER_COMPOSE_EXPORTS) ; \
+	{ \
+		$(DOCKER_COMPOSE) --file "$(DOCKER_COMPOSE_FILE)" up --build ; \
+		$(DOCKER_COMPOSE) --file "$(DOCKER_COMPOSE_FILE)" down ; \
+	}
+
+.PHONY: docker-logs
+# target: docker-logs - Follow and display logs from running containers
+docker-logs: env-check-docker
+	@$(DOCKER_COMPOSE_EXPORTS) ; \
+		$(DOCKER_COMPOSE) --file "$(DOCKER_COMPOSE_FILE)" logs --follow
+
+.PHONY: docker-shell
+# target: docker-shell - Spawn a shell to the container
+docker-shell: env-check-docker
+	@$(DOCKER_COMPOSE_EXPORTS) ; $(DOCKER_COMPOSE) \
+		--file "$(DOCKER_COMPOSE_FILE)" \
+	exec "${DOCKER_SERVICE_NAME}" "${DOCKER_COMMAND}"
+
+.PHONY: docker-clean
+# target: docker-clean - Remove all images, containers, and volumes
+docker-clean: env-check-docker
+	@$(DOCKER) ps --all -q | xargs -r $(DOCKER) container rm $(DOCKER_RM_OPTS)
+	@$(DOCKER) system prune $(DOCKER_SYSTEM_PRUNE_OPTS)
 
 ##
 # Code quality

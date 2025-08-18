@@ -2,4 +2,28 @@ FROM ghcr.io/astral-sh/uv:{{ cookiecutter.uv_version }}-python{{ cookiecutter.py
 
 ARG DEBIAN_FRONTEND=noninteractive
 
+ARG PACKAGE_NAME
+ARG DOCKER_MOUNT_POINT
+ARG DOCKER_CONTAINER_PORT
+
+ENV CONTAINER_PORT="${DOCKER_CONTAINER_PORT}"
+
+RUN apt-get -y update && \
+    apt-get -y install --no-install-recommends \
+        bat \
+        curl \
+        git \
+        less \
+        libpq-dev \
+        make \
+        procps \
+        ripgrep \
+        tree \
+    && \
+    apt-get clean
+
+WORKDIR "${DOCKER_MOUNT_POINT}"
+
 # TODO(axk): ///
+
+ENTRYPOINT ["/bin/bash"]
