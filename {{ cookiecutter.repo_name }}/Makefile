@@ -34,12 +34,6 @@ PACKAGE_VERSION ?= $(strip \
 
 ERROR_ENVIRONMENT = 1
 
-which_helper = $(shell \
-	[[ -n "$(shell which ${1} 2>/dev/null)" ]] \
-		|| echo "echo ERROR: Can\'t find the command: ${1} && \
-		exit ${ERROR_ENVIRONMENT}" \
-)
-
 ##
 # Commands
 
@@ -61,7 +55,16 @@ endif
 
 GIT = git
 
-version_helper = $(shell ${1} --version | grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+")
+##
+# Functions
+
+which_helper = $(shell \
+	[[ -n "$(shell which ${1} 2>/dev/null)" ]] \
+		|| echo "echo ERROR: Can\'t find the command: ${1} && \
+		exit ${ERROR_ENVIRONMENT}" \
+)
+
+version_helper = $(shell ${1} --version | ${GREP} -o "[0-9]\+\.[0-9]\+\.[0-9]\+")
 
 ##
 # Python
@@ -88,6 +91,11 @@ UV_CMD_OPTS = \
 	--python-preference=only-managed
 UV_BUILD_OPTS = \
 	--verify-hashes
+
+UV_PIP_LIST_FORMAT ?= freeze
+UV_PIP_LIST_OPTS = \
+	--format="$(UV_PIP_LIST_FORMAT)"
+UV_PIP_LIST = $(UV) pip list $(UV_CMD_OPTS) $(UV_PIP_LIST_OPTS)
 
 UV_LOCK_EXTRA_OPTS ?=
 UV_SYNC_EXTRA_OPTS ?=
@@ -119,7 +127,7 @@ DOCKER_FILE ?= $(CURDIR)/docker/Dockerfile.$(MACHINE)
 DOCKER_COMPOSE_FILE ?= $(CURDIR)/docker/docker-compose.yml
 DOCKER_SERVICE_NAME ?= {{ cookiecutter.service_name }}
 DOCKER_IMAGE_NAME ?= $(DOCKER_SERVICE_NAME):$(PACKAGE_VERSION)
-DOCKER_MOUNT_POINT = /usr/local/src/$(PACKAGE_NAME)
+DOCKER_MOUNT_POINT = /usr/local/src/$(DOCKER_SERVICE_NAME)
 DOCKER_CONTAINER_PORT ?= 8000
 DOCKER_HOST_PORT ?= 8000
 DOCKER_COMMAND ?= $(SHELL)
@@ -418,11 +426,39 @@ requirements: env-check-python
 # resolution process.
 	@$(UV) lock $(UV_CMD_OPTS) $(UV_LOCK_EXTRA_OPTS)
 
+.PHONY: requirements-refresh
+# target: requirements-refresh - Refresh all cached data and update the lockfile
+requirements-refresh:
+	@$(MAKE) requirements UV_LOCK_EXTRA_OPTS="--refresh"
+
+.PHONY: requirements-check
+# target: requirements-check - List and validate packages installed in an environment
+requirements-check: env-check-python env-check-venv
+	$(info UV_PIP_LIST_FORMAT -> `$(UV_PIP_LIST_FORMAT)`)
+
+	$(info UV_PIP_LIST_FORMAT:)
+	$(info ${\t}Use "columns", "freeze" (default), or "json" to control the output \
+		format)
+
+	@$(UV_PIP_LIST) --exclude-editable
+	@echo -e "\nEditable projects:"
+	@$(UV_PIP_LIST) --editable --strict
+
+.PHONY: requirements-tree
+# target: requirements-tree - Display the project's dependency tree
+requirements-tree: env-check-python env-check-lockfile
+	@$(UV) tree $(UV_CMD_OPTS) --locked
+
 .PHONY: install
 # target: install - Ensure that all project dependencies are up to date with the lockfile
 install: env-check-python env-check-venv env-check-lockfile
 	@$(UV) sync $(UV_CMD_OPTS) --locked \
 		$(UV_SYNC_OPT_DEPS) $(UV_SYNC_EXTRA_OPTS)
+
+.PHONY: force-install
+# target: force-install - Reinstall all dependencies
+force-install:
+	@$(MAKE) install UV_SYNC_EXTRA_OPTS="--reinstall"
 
 .PHONY: dist
 # target: dist - Build Python packages

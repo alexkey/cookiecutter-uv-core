@@ -18,7 +18,7 @@
 
     "docker_build_platform": "linux/amd64",
     "docker_compose_name": "{{ cookiecutter.service_name }}",
-    "docker_env_path": "/opt/{{ cookiecutter.repo_name }}/.venv",
+    "docker_env_path": "/opt/{{ cookiecutter.service_name }}/.venv",
 
     "redis_image_tag": "8.2.2-alpine",
     "postgres_image_tag": "18.0-alpine",

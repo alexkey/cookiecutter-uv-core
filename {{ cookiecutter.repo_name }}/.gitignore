@@ -4,6 +4,8 @@
 *.out
 *.pdf
 *~
+.env
+.env.*
 /var/
 .DS_Store
 
