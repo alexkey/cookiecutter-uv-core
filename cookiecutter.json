@@ -12,15 +12,15 @@
     "license": "BSD-3-Clause",
     "year": "{% now 'local', '%Y' %}",
 
-    "uv_version": "0.8.4",
-    "python_version": "3.13.5",
+    "uv_version": "0.9.7",
+    "python_version": "3.13.9",
     "python_majmin": "{{ cookiecutter.python_version.rsplit('.', 1)[0] }}",
 
     "docker_build_platform": "linux/amd64",
     "docker_compose_name": "{{ cookiecutter.service_name }}",
     "docker_env_path": "/opt/{{ cookiecutter.repo_name }}/.venv",
 
-    "redis_image_tag": "8.2.0-alpine",
-    "postgres_image_tag": "17.6-alpine",
+    "redis_image_tag": "8.2.2-alpine",
+    "postgres_image_tag": "18.0-alpine",
     "postgres_user": "database"
 }

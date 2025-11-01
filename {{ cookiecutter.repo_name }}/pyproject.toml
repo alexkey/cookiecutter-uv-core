@@ -30,16 +30,19 @@ classifiers = [
 ]
 requires-python = "~={{ cookiecutter.python_version }}"
 dependencies = [
-    "alembic~=1.16.4",
+    "alembic~=1.17.1",
     "celery~=5.5.3",
-    "fastapi~=0.116.1",
+    "click~=8.3.0",
+    "fastapi~=0.120.4",
     "httpx~=0.28.1",
     "jinja2~=3.1.6",
-    "pydantic-settings~=2.10.1",
-    "pydantic~=2.11.7",
-    "redis~=6.2.0",
-    "sqlalchemy[postgresql-asyncpg,mypy]~=2.0.41",
-    "uvicorn[standard]~=0.35.0",
+    "pydantic-settings~=2.11.0",
+    "pydantic~=2.12.3",
+    "redis~=7.0.1",
+    "rich~=14.2.0",
+    "sqlalchemy[postgresql-asyncpg,mypy]~=2.0.44",
+    "structlog~=25.5.0",
+    "uvicorn[standard]~=0.38.0",
 ]
 
 [project.optional-dependencies]
@@ -51,7 +54,7 @@ dependencies = [
 {{ cookiecutter.service_name }} = "{{ cookiecutter.repo_name }}.app.__main__:main"
 
 [build-system]
-requires = ["uv_build>=0.7.21,<0.8.0"]
+requires = ["uv_build>=0.9.7,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
@@ -86,18 +89,34 @@ data = []
 # into the project environment.
 package = true
 
-dev-dependencies = [
-    "deptry==0.23.0",
-    "icecream>=2.1.5",
-    "mypy==1.17.0",
-    "pylint==3.3.7",
-    "pytest-asyncio~=1.1.0",
+default-groups = ["dev"]
+
+[dependency-groups]
+dev = [
+    { include-group = "types" },
+    { include-group = "check" },
+    { include-group = "test" },
+
+    "icecream>=2.1.8",
+    "sqlalchemy[postgresql-asyncpg,mypy]~=2.0.44",
+    "watchfiles>=1.1.1",
+]
+types = [
+    "types-PyYAML",
+    "types-Pygments",
+    "types-colorama",
+    "types-greenlet",
+]
+check = [
+    "deptry==0.23.1",
+    "mypy==1.18.2",
+    "pylint==4.0.2",
+    "ruff==0.14.3",
+]
+test = [
+    "pytest-asyncio~=1.2.0",
     "pytest-repeat>=0.9.4",
-    "pytest~=8.4.1",
-    "ruff==0.12.4",
-    "sqlalchemy[mypy]~=2.0.41",
-    "ty==0.0.1a14",
-    "watchfiles>=1.1.0",
+    "pytest~=8.4.2",
 ]
 
 [tool.deptry.per_rule_ignores]
@@ -109,6 +128,8 @@ DEP001 = [
 ]
 DEP002 = [
     # Defined as a dependency but not used in the codebase.
+
+    "rich",  # <- enhances `structlog` library
     "uvicorn",
 ]
 DEP004 = [
