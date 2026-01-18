@@ -64,7 +64,8 @@ which_helper = $(shell \
 		exit ${ERROR_ENVIRONMENT}" \
 )
 
-version_helper = $(shell ${1} --version | ${GREP} -o "[0-9]\+\.[0-9]\+\.[0-9]\+")
+version_helper = $(shell ${1} --version \
+	| ${GREP} -o "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*")
 
 ##
 # Python
@@ -431,6 +432,12 @@ requirements: env-check-python
 requirements-refresh:
 	@$(MAKE) requirements UV_LOCK_EXTRA_OPTS="--refresh"
 
+.PHONY: requirements-up
+# target: requirements-up - Upgrade packages, ignoring pinned versions
+requirements-up:
+	@$(MAKE) requirements UV_LOCK_EXTRA_OPTS="--upgrade"
+	@$(MAKE) install
+
 .PHONY: requirements-check
 # target: requirements-check - List and validate packages installed in an environment
 requirements-check: env-check-python env-check-venv
@@ -441,8 +448,12 @@ requirements-check: env-check-python env-check-venv
 		format)
 
 	@$(UV_PIP_LIST) --exclude-editable
+
 	@echo -e "\nEditable projects:"
 	@$(UV_PIP_LIST) --editable --strict
+
+	@echo -e "\nOutdated packages:"
+	@$(UV) pip list $(UV_CMD_OPTS) --outdated
 
 .PHONY: requirements-tree
 # target: requirements-tree - Display the project's dependency tree
