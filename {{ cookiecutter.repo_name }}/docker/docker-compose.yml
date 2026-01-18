@@ -21,7 +21,7 @@ services:
       - "${DOCKER_CONTAINER_PORT}"
     environment:
       # Database
-      DATABASE_URL: "postgresql+asyncpg://database:database@postgres:5432/database"
+      DATABASE_URL: "postgresql+asyncpg://{{ cookiecutter.postgres_user }}:{{ cookiecutter.postgres_user }}@postgres:5432/{{ cookiecutter.postgres_user }}"
     command: [
       "-c",
       "./docker/scripts/wait_for_pg.py \

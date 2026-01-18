@@ -2,6 +2,8 @@
     "name": "FooBar-baz",
     "service_name": "{{ cookiecutter.name | lower }}",
     "repo_name": "{{ cookiecutter.service_name | replace('-', '_') }}",
+    "env_prefix": "{{ cookiecutter.name.split('-')[0].split('_')[0] | upper }}_",
+
     "version": "0.1.0",
     "brief": "Just foo bar",
     "description": "A modern Python project template powered by cookiecutter that provides a comprehensive\ndevelopment environment using uv for dependency management.\n\nThe template includes a set of tools and configurations for building, testing,\npackaging, and distributing Python applications with Docker support.\nIt features integrated quality assurance tools, testing infrastructure, dependency\nanalysis, and containerization capabilities with multi-platform support.",
