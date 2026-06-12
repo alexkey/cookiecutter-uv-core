@@ -6,7 +6,7 @@
 
     "version": "0.1.0",
     "brief": "Just foo bar",
-    "description": "A modern Python project template powered by cookiecutter that provides a comprehensive\ndevelopment environment using uv for dependency management.\n\nThe template includes a set of tools and configurations for building, testing,\npackaging, and distributing Python applications with Docker support.\nIt features integrated quality assurance tools, testing infrastructure, dependency\nanalysis, and containerization capabilities with multi-platform support.",
+    "description": "A modern Python project template powered by cookiecutter that provides a comprehensive\ndevelopment environment using uv for dependency management.\n\nThe template includes tools and configurations for building, testing,\npackaging, and distributing Python applications with Docker support.\nIt features integrated quality assurance tools, testing infrastructure, dependency\nanalysis, and containerization capabilities with multi-platform support.",
     "author_name": "John Doe",
     "author_email": "john.doe@example.com",
     "url": "https://example.com",
@@ -14,15 +14,15 @@
     "license": "BSD-3-Clause",
     "year": "{% now 'local', '%Y' %}",
 
-    "uv_version": "0.9.26",
-    "python_version": "3.13.11",
+    "uv_version": "0.11.21",
+    "python_version": "3.13.14",
     "python_majmin": "{{ cookiecutter.python_version.rsplit('.', 1)[0] }}",
 
     "docker_build_platform": "linux/amd64",
     "docker_compose_name": "{{ cookiecutter.service_name }}",
-    "docker_env_path": "/opt/{{ cookiecutter.service_name }}/.venv",
+    "docker_prefix": "/opt/{{ cookiecutter.service_name }}",
 
-    "redis_image_tag": "8.4.0-alpine",
-    "postgres_image_tag": "18.1-alpine",
+    "redis_image_tag": "8.8-alpine",
+    "postgres_image_tag": "18.4-alpine",
     "postgres_user": "database"
 }
