@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:{{ cookiecutter.uv_version }}-python{{ cookiecutter.python_majmin }}-bookworm-slim
+FROM ghcr.io/astral-sh/uv:{{ cookiecutter.uv_version }}-python{{ cookiecutter.python_majmin }}-trixie-slim
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -11,6 +11,7 @@ ENV CONTAINER_PORT="${DOCKER_CONTAINER_PORT}"
 RUN apt-get -y update && \
     apt-get -y install --no-install-recommends \
         bat \
+        btop \
         curl \
         git \
         less \
@@ -24,6 +25,36 @@ RUN apt-get -y update && \
 
 WORKDIR "${DOCKER_MOUNT_POINT}"
 
-# TODO(axk): ///
+
+# ==
+# uv
+# --
+
+# Specify the directory path for the secondary virtual environment (on a mounted volume)
+# to avoid interference with the primary environment on the localhost.
+ENV UV_PROJECT_ENVIRONMENT="{{ cookiecutter.docker_prefix }}/.venv"
+
+# Copy from the cache instead of linking since it's a mounted volume.
+ENV UV_LINK_MODE=copy
+
+# Enable bytecode compilation.
+ENV UV_COMPILE_BYTECODE=1
+
+# Add project sources and the minimum set of files required for the build system.
+ADD src "${DOCKER_MOUNT_POINT}/src"
+ADD \
+    .gitignore \
+    .python-version \
+    LICENSE \
+    Makefile \
+    README.rst \
+    pyproject.toml \
+    uv.lock \
+"${DOCKER_MOUNT_POINT}/"
+
+RUN make venv
+RUN --mount=type=cache,target=/root/.cache/uv \
+    make install
+
 
 ENTRYPOINT ["/bin/bash"]

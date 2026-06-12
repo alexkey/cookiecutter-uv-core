@@ -20,16 +20,18 @@ services:
     expose:
       - "${DOCKER_CONTAINER_PORT}"
     environment:
+      # Logging
+      {{ cookiecutter.env_prefix }}LOG_LEVEL: "info"
+      {{ cookiecutter.env_prefix }}LOG_FORMAT: "console"
+      {{ cookiecutter.env_prefix }}LOG_COLORS: "true"
+      {{ cookiecutter.env_prefix }}LOG_VERBOSE: "true"
       # Database
-      DATABASE_URL: "postgresql+asyncpg://{{ cookiecutter.postgres_user }}:{{ cookiecutter.postgres_user }}@postgres:5432/{{ cookiecutter.postgres_user }}"
+      {{ cookiecutter.env_prefix }}DATABASE_URL: "postgresql+asyncpg://{{ cookiecutter.postgres_user }}:{{ cookiecutter.postgres_user }}@postgres:5432/{{ cookiecutter.postgres_user }}"
     command: [
       "-c",
       "./docker/scripts/wait_for_pg.py \
       && /bin/bash"
     ]
-
-    # TODO(axk): ///
-
 
   redis:
     image: "redis:{{ cookiecutter.redis_image_tag }}"

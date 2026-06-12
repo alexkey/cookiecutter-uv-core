@@ -12,28 +12,36 @@ fi
 #---
 # Searches for virtualenv in the following order:
 # * User-specified path (if </path/to/venv> were given).
-# * Docker environment path ({{ cookiecutter.docker_env_path }}).
+# * Docker environment path ({{ cookiecutter.docker_prefix }}).
 # * Local project path (.venv).
 
 
-main() {
+__activate_venv() {
     local user_prefix="${1:-}"
-    local primary_prefix="{{ cookiecutter.docker_env_path }}"
+    local primary_prefix="${user_prefix:-{{ cookiecutter.docker_prefix }}/.venv}"
     local secondary_prefix="${PWD}/.venv"
     local prefix=""
 
-    # Find the first valid path.
-    if [[ -n "${user_prefix}" ]] && [[ -d "${user_prefix}" ]]; then
-        prefix="${user_prefix}"
+    # A user-specified path is authoritative: if it does not exist,
+    # do not fall back to the other candidates.
+    if [[ -n "${user_prefix}" && ! -d "${user_prefix}" ]]; then
+        echo "ERROR: Virtual environment not found at user-specified path:" \
+             "\`${user_prefix}\`" \
+        >&2
+        return 2
+    fi
 
-    elif [[ -d "${primary_prefix}" ]]; then
+    # Find the first valid path.
+    if [[ -d "${primary_prefix}" ]]; then
         prefix="${primary_prefix}"
 
     elif [[ -d "${secondary_prefix}" ]]; then
         prefix="${secondary_prefix}"
 
     else
-        echo "ERROR: No valid virtual environment found" >&2
+        echo "ERROR: No valid virtual environment found:" \
+             "\`${primary_prefix}\`, \`${secondary_prefix}\`" \
+        >&2
         return 2
     fi
 
@@ -48,8 +56,13 @@ main() {
     fi
 
     echo "Activating virtual environment: \`${prefix}\`..."
+    # shellcheck disable=SC1090
     source "${activate_script}"
 }
 
 
-main "$@"
+__activate_venv "$@"
+__activate_venv_rc=$?
+
+unset -f __activate_venv
+return ${__activate_venv_rc}

@@ -143,8 +143,8 @@ DOCKER_BUILD_ARGS = $(foreach arg,${DOCKER_ARGS}, --build-arg "${arg}=${$(arg)}"
 DOCKER_COMPOSE = $(DOCKER) compose $(DOCKER_EXTRA_OPTS)
 define DOCKER_COMPOSE_EXPORTS
 export CURDIR="$(CURDIR)" ; \
-export DOCKER_IMAGE_NAME="$(DOCKER_IMAGE_NAME)" ; \
 export DOCKER_BUILD_PLATFORM="$(DOCKER_BUILD_PLATFORM)" ; \
+export DOCKER_IMAGE_NAME="$(DOCKER_IMAGE_NAME)" ; \
 export DOCKER_MOUNT_POINT="$(DOCKER_MOUNT_POINT)" ; \
 export DOCKER_CONTAINER_PORT="$(DOCKER_CONTAINER_PORT)" ; \
 export DOCKER_HOST_PORT="$(DOCKER_HOST_PORT)"
@@ -271,7 +271,7 @@ ifeq ($(wildcard ${UV_LOCKFILE}),)
 	$(error The project lockfile does not exist: `${UV_LOCKFILE}`)
 endif
 	$(info Requires that the project lockfile (`uv.lock`) is up-to-date. \
-		If the lockfile is needs to be updated, the target will exit with an \
+		If the lockfile needs to be updated, the target will exit with an \
 		error \
 	)
 
@@ -392,7 +392,7 @@ ifdef PYTEST_CUSTOM_PATH
 	$(info PYTEST_CUSTOM_PATH -> `$(PYTEST_CUSTOM_PATH)`)
 else
 	$(info PYTEST_CUSTOM_PATH: Use "/path/to/test.py::TestClass::test_method" \
-		to run a single test `test_method` from the suite `TestClass` of the \
+		to run a single test `test_method` from the suite `TestClass` of \
 		`test.py`)
 endif
 
@@ -431,6 +431,11 @@ requirements: env-check-python
 # target: requirements-refresh - Refresh all cached data and update the lockfile
 requirements-refresh:
 	@$(MAKE) requirements UV_LOCK_EXTRA_OPTS="--refresh"
+
+.PHONY: requirements-try
+# target: requirements-try - Perform a dry run of an upgrade without writing the lockfile
+requirements-try:
+	@$(MAKE) requirements UV_LOCK_EXTRA_OPTS="--upgrade --dry-run"
 
 .PHONY: requirements-up
 # target: requirements-up - Upgrade packages, ignoring pinned versions
