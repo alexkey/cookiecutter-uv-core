@@ -30,6 +30,9 @@ WORKDIR "${DOCKER_MOUNT_POINT}"
 # uv
 # --
 
+# Allow log messages to be immediately dumped to the stream instead of being buffered.
+ENV PYTHONUNBUFFERED=1
+
 # Specify the directory path for the secondary virtual environment (on a mounted volume)
 # to avoid interference with the primary environment on the localhost.
 ENV UV_PROJECT_ENVIRONMENT="{{ cookiecutter.docker_prefix }}/.venv"

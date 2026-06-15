@@ -9,13 +9,5 @@ __all__ = [
     "get_logger",
     "get_settings",
     "is_level_enabled",
+    "setup_logging",
 ]
-
-
-settings = get_settings()
-
-setup_logging(
-    log_level=settings.LOG_LEVEL,
-    log_format=settings.LOG_FORMAT,
-    enable_colors=settings.LOG_COLORS,
-)
