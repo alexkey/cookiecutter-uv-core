@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import Literal, TextIO, get_args
+from typing import Literal, Protocol, TextIO, get_args
 
 import structlog
 
@@ -18,6 +18,11 @@ LogFormatT = Literal[
 ]
 
 LoggerT = structlog.stdlib.BoundLogger
+
+
+class SupportsLevelCheck(Protocol):
+    def isEnabledFor(self, level: int, /) -> bool: ...  # pylint: disable=invalid-name
+
 
 _HANDLER_NAME = "{{ cookiecutter.repo_name }}_handler"
 
@@ -72,7 +77,7 @@ def check_log_level(value: str | int) -> str | int:
 
 
 def is_level_enabled(
-    logger: LoggerT,
+    logger: SupportsLevelCheck,
     *,
     level: str | int = "debug",
 ) -> bool:
@@ -99,7 +104,7 @@ class OrderedKeysProcessor:
 
     def __init__(self, key_order: tuple[str, ...]) -> None:
         assert isinstance(key_order, tuple), (
-            f"key_order must be a tuple, got {type(key_order)!r}"
+            f"key_order must be a tuple, not {type(key_order)!r}"
         )
         self._key_order = key_order
         self._key_set = frozenset(key_order)
