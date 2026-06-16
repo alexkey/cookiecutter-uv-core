@@ -11,6 +11,7 @@ from {{ cookiecutter.repo_name }}.logging import LogFormatT, check_log_level
 
 __all__ = [
     "DEFAULT_LOCAL_ENV_FILE",
+    "Settings",
     "get_settings",
 ]
 
@@ -21,22 +22,29 @@ DATABASE_DRIVER = "postgresql+asyncpg"
 
 
 def check_database_url(value: SecretStr) -> SecretStr:
-    raw = value.get_secret_value()
+    _url = value.get_secret_value()
     try:
-        url = sa_make_url(raw)
+        url = sa_make_url(_url)
     except ArgumentError as exc:
-        raise ValueError(f"invalid database URL: {value!r}") from exc
+        raise ValueError("invalid database URL") from exc
 
-    driver = getattr(url, "drivername", "")
-    if driver.lower() != DATABASE_DRIVER:
+    driver = url.drivername
+    if driver != DATABASE_DRIVER:
         raise ValueError(
             f"database URL must use `{DATABASE_DRIVER}` driver, not `{driver}`"
         )
 
-    if url.host is None or url.database is None:
-        raise ValueError("database URL must include host and database name")
+    if not (url.host or url.query.get("host")):
+        raise ValueError("database URL must include a host or socket directory")
+
+    if url.database is None:
+        raise ValueError("database URL must include a database name")
 
     return value
+
+
+def _resolve_env_file() -> str:
+    return getenv("{{ cookiecutter.env_prefix }}ENV_FILE") or DEFAULT_LOCAL_ENV_FILE
 
 
 LogLevel = Annotated[str, AfterValidator(check_log_level)]
@@ -51,7 +59,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: LogLevel = Field("debug", description="Root logger level")
     LOG_FORMAT: LogFormatT = Field(
         "console",
-        description=f"Logging output format {', '.join(get_args(LogFormatT))}",
+        description=f"Logging output format: {', '.join(get_args(LogFormatT))}",
     )
     LOG_COLORS: bool = Field(True, description="Use colors for a nicer output")
     LOG_VERBOSE: bool = Field(False, description="Enable verbose logs")
@@ -64,6 +72,8 @@ class Settings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(
+        # Whether to hide inputs when printing errors.
+        hide_input_in_errors=True,
         # Forbid extra attributes during model initialization.
         extra="forbid",
         # Whether environment and CLI variable names should be read with
@@ -75,7 +85,7 @@ class Settings(BaseSettings):
         env_prefix="{{ cookiecutter.env_prefix }}",
         # The env file(s) to load settings values from; None indicates that environment
         # variables should not be loaded from an env file.
-        env_file=(getenv("{{ cookiecutter.env_prefix }}ENV_FILE") or DEFAULT_LOCAL_ENV_FILE),
+        env_file=_resolve_env_file(),
         # The env file encoding.
         env_file_encoding="utf-8",
         # Ignore environment variables where the value is an empty string.
@@ -94,10 +104,16 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def _get_settings() -> Settings:
-    return Settings()
+    return Settings(_env_file=_resolve_env_file())
 
 
 def get_settings(*, reload: bool = False) -> Settings:
+    """Returns the cached settings singleton.
+
+    Args:
+        reload: If `True`, discard the cached instance and rebuild it from the
+            environment and env file before returning.
+    """
     if reload:
         _get_settings.cache_clear()
 
