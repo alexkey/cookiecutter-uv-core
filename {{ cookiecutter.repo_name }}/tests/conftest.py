@@ -8,6 +8,9 @@ import pytest
 PYTEST_MARK_SLOW = "slow"
 PYTEST_OPT_SKIP_SLOW = "--skip-slow"
 
+PYTEST_MARK_REQUIRES_DB = "requires_db"
+PYTEST_OPT_SKIP_DB = "--skip-db"
+
 SEED_ENV_VAR = "{{ cookiecutter.env_prefix }}TEST_SEED"
 
 _seed_key = pytest.StashKey[int]()
@@ -17,12 +20,23 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         PYTEST_OPT_SKIP_SLOW, action="store_true", default=False, help="skip slow tests"
     )
+    parser.addoption(
+        PYTEST_OPT_SKIP_DB,
+        action="store_true",
+        default=False,
+        help="skip tests that need a live database",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
         f"{PYTEST_MARK_SLOW}: marks tests as slow (deselect with `{PYTEST_OPT_SKIP_SLOW}`)",
+    )
+    config.addinivalue_line(
+        "markers",
+        f"{PYTEST_MARK_REQUIRES_DB}: marks tests that need a live database "
+        f"(deselect with `{PYTEST_OPT_SKIP_DB}`)",
     )
 
     seed_value = os.environ.get(SEED_ENV_VAR)
@@ -51,6 +65,10 @@ def pytest_collection_modifyitems(
         PYTEST_MARK_SLOW: (
             config.getoption(PYTEST_OPT_SKIP_SLOW),
             f"skipping slow tests as {PYTEST_OPT_SKIP_SLOW} is set",
+        ),
+        PYTEST_MARK_REQUIRES_DB: (
+            config.getoption(PYTEST_OPT_SKIP_DB),
+            f"skipping database tests as {PYTEST_OPT_SKIP_DB} is set",
         ),
     }
 

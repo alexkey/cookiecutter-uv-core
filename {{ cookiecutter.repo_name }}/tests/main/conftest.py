@@ -1,9 +1,24 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+import io
+import logging
+from collections.abc import Callable, Iterator
 from typing import TextIO, cast
 
 import pytest
+import structlog
+
+from {{ cookiecutter.repo_name }}.logging import setup_logging
+from tests.utils import (
+    _DATABASE,
+    _DRIVER,
+    _HOST,
+    _PASSWORD,
+    _PORT,
+    _USER,
+    VALID_DATABASE_URL,
+    _database_url,
+)
 
 
 class _FakeStream:
@@ -20,3 +35,75 @@ def make_fake_stream() -> Callable[..., TextIO]:
         return cast(TextIO, _FakeStream(isatty=isatty))
 
     return factory
+
+
+@pytest.fixture
+def database_driver() -> str:
+    return _DRIVER
+
+
+@pytest.fixture
+def database_user() -> str:
+    return _USER
+
+
+@pytest.fixture
+def database_password() -> str:
+    return _PASSWORD
+
+
+@pytest.fixture
+def database_host() -> str:
+    return _HOST
+
+
+@pytest.fixture
+def database_port() -> int:
+    return _PORT
+
+
+@pytest.fixture
+def database_name() -> str:
+    return _DATABASE
+
+
+@pytest.fixture
+def make_database_url() -> Callable[..., str]:
+    return _database_url
+
+
+@pytest.fixture
+def valid_database_url() -> str:
+    return VALID_DATABASE_URL
+
+
+@pytest.fixture
+def cap_json_logs() -> Iterator[io.StringIO]:
+    """Captures application logs as JSON and isolates process-wide logging state.
+
+    Yields:
+        The stream receiving JSON log lines, parseable with `parse_json_lines`.
+    """
+    logger = logging.getLogger()
+    handlers = logger.handlers[:]
+    level = logger.level
+
+    stream = io.StringIO()
+    setup_logging("debug", "json", log_stream=cast(TextIO, stream))
+
+    try:
+        yield stream
+    finally:
+        for hnd in logger.handlers[:]:
+            if hnd not in handlers:
+                logger.removeHandler(hnd)
+                hnd.close()
+
+        for hnd in handlers:
+            if hnd not in logger.handlers:
+                logger.addHandler(hnd)
+
+        logger.setLevel(level)
+
+        structlog.contextvars.clear_contextvars()
+        structlog.reset_defaults()

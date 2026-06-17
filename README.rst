@@ -133,7 +133,7 @@ commands:
   ``make env-show-docker``.
 
 * Check the requirements for quality assurance tools: ``make env-check-qa``
-  (it should be checked within the virtual environment at a later stage).
+  (run this check from within the virtual environment at a later stage).
 
 * Display the environment variables used to configure the quality assurance
   tools: ``make env-show-qa``.
@@ -245,8 +245,12 @@ lint, format, and test the codebase:
   - Run the system tests in the ``PYTEST_SYSTEM_DIR`` subdirectory of
     ``tests``: ``make autotest``.
 
-  Set ``PYTEST_DEPLOYMENT`` to the deployed service URL that the system
-  tests target, e.g., ``http://localhost:8000`` for the local environment.
+  ``make autotest`` reads ``PYTEST_DEPLOYMENT`` as its target deployment URL,
+  currently a stub.
+
+  Both targets also accept ``PYTEST_EXTRA_OPTS`` and ``PYTEST_CUSTOM_PATH`` to
+  forward extra Pytest arguments and restrict the run to specific paths; see
+  *Testing* under the section `Usage`_ for details.
 
 **Auxiliary Targets**
 
@@ -264,10 +268,10 @@ The project includes several utility targets to help manage it:
 Usage
 -----
 
-The generated service provides two foundational runtime facilities: typed
-configuration and structured logging.
+The generated service provides three foundational runtime facilities: typed
+configuration, structured logging, and asynchronous database access.
 
-**Configuration**
+**Configuration** (``config.py``)
 
 Runtime configuration is centralized in a typed Pydantic ``Settings`` model and
 read through a cached accessor::
@@ -293,7 +297,7 @@ read through a cached accessor::
   ``postgresql+asyncpg`` driver and include a host and a database name. It is
   held as a ``SecretStr`` and masked when settings are logged or printed.
 
-**Logging**
+**Logging** (``logging.py``)
 
 Logging is built on *structlog* and applies uniformly to records emitted
 through both *structlog* and the standard library. Configure it once during
@@ -325,3 +329,136 @@ startup, driving it from the settings above::
 * Retrieve module-level loggers with ``get_logger(__name__)`` and bind context
   as keyword arguments. Guard expensive log preparation with
   ``is_level_enabled(logger)``.
+
+**Database** (``database.py``)
+
+Database access uses asynchronous *SQLAlchemy* over the ``postgresql+asyncpg``
+driver. Helper functions cover the full lifecycle: creating and disposing the
+engine, building a session factory, and opening sessions that commit or roll
+back automatically::
+
+    from {{ cookiecutter.repo_name }} import get_settings
+    from {{ cookiecutter.repo_name }}.app.db.database import (
+        create_engine,
+        create_session,
+        create_sessionmaker,
+        dispose_engine,
+    )
+
+    settings = get_settings()
+
+    # Create the engine and session factory once during startup.
+    engine = create_engine(settings.DATABASE_URL, raise_on_exc=True)
+    sessionmaker = create_sessionmaker(engine)
+
+    # Open one session per unit of work; the block is a single transaction.
+    async with create_session(sessionmaker) as session:
+        await session.execute(...)
+
+    # Dispose the engine once during shutdown.
+    await dispose_engine(engine)
+
+* Create the engine once with ``create_engine()`` and reuse it for the process
+  lifetime; it owns the connection pool. Creation failures return ``None`` by
+  default; pass ``raise_on_exc=True`` to fail fast at startup. Dispose the
+  engine once during shutdown with ``await dispose_engine(engine)`` to close
+  pooled connections.
+
+* Build a single session factory per engine with ``create_sessionmaker()`` and
+  share it as the source of every session. Do not create an engine or factory
+  per request or per task.
+
+* ``create_session()`` is an async context manager that opens one session and
+  wraps the enclosed block in a single transaction. The transaction commits
+  when the block exits cleanly and rolls back on any exception; the session is
+  always closed. Use one block per unit of work and let it own the boundary -
+  do not call ``session.begin()`` or ``session.commit()`` yourself inside it.
+
+  - Database and unexpected errors are re-raised after rollback by default
+    (``raise_on_exc=True``); ``asyncio.CancelledError`` always rolls back and
+    propagates. Pass ``context=...`` to label a session in log records and
+    ``verbose=True`` to trace each lifecycle step.
+
+* **The defaults** applied to the engine and sessions live in
+  ``DEFAULT_ASYNC_ENGINE_PARAMS`` and ``DEFAULT_ASYNC_SESSION_PARAMS``; consult
+  them for the active values and override any of them through keyword arguments
+  to ``create_engine()`` and ``create_sessionmaker()``.
+
+  - Sessions set ``expire_on_commit=False``. With the default ``True``,
+    attributes are expired after ``commit()``, so the first later access to
+    each attribute triggers an implicit refresh SELECT. Under asyncio, that
+    implicit I/O can occur outside *SQLAlchemy*'s async bridge and raise
+    ``MissingGreenlet``. The tradeoff is that post-commit objects are not
+    automatically re-fetched. Server-generated values such as
+    ``server_default``, ``server_onupdate``, and ``Computed`` are available
+    only if *SQLAlchemy* populated them during flush, typically via
+    ``RETURNING`` where supported; values that were not populated remain
+    expired and trigger the same implicit I/O problem on access. Separately, if
+    *SQLAlchemy* is not configured to know about a server-side computation, the
+    affected value may remain stale in memory. Fetch such values explicitly
+    with ``await session.refresh(obj, [...])``, and load relationships eagerly
+    with ``selectinload()`` rather than relying on attribute access.
+
+  - The engine pool settings are designed to work together when connections
+    pass through intermediaries. ``pool_pre_ping`` verifies health when a
+    connection is retrieved from the pool and automatically replaces it if it
+    was dropped while idle. ``pool_use_lifo`` keeps traffic on a smaller set of
+    active connections, allowing excess connections to remain idle and be
+    closed by the server during low-traffic periods. ``pool_recycle`` (1800
+    seconds) limits connection age and is a reasonable default when no
+    component in the network path closes connections sooner. If you are using
+    PgBouncer (600s default), a load balancer, or NAT (for example, an AWS NLB
+    with a 350s idle timeout), set it below the shortest idle timeout in the
+    path, typically around 300 seconds. While ``pool_pre_ping`` detects stale
+    connections when they are retrieved from the pool, ``pool_recycle`` helps
+    avoid reaching that state in the first place.
+
+**Testing**
+
+Tests run under *Pytest*. As mentioned above, the ``make test`` and
+``make autotest`` targets run the project's tests::
+
+    make test
+    make autotest
+
+``PYTEST_DEPLOYMENT`` is dedicated to ``make autotest`` and is reserved for the
+deployed service URL that system tests will target (default
+``http://localhost:8000``). It is currently a stub: ``make autotest`` only
+echoes the value, and the shipped system tests do not consume it yet.
+
+The shared ``{{ cookiecutter.repo_name }}/tests/conftest.py`` registers two
+markers, applied in test code as ``@pytest.mark.slow`` and
+``@pytest.mark.requires_db``, each paired with an option that skips the tests
+carrying it:
+
+* ``slow`` marks tests that are expensive to run; pass ``--skip-slow`` to skip
+  them.
+
+* ``requires_db`` marks tests that need a live database; pass ``--skip-db`` to
+  skip them.
+
+The two options are independent and may be combined, for example
+``PYTEST_EXTRA_OPTS="--skip-slow --skip-db"``.
+
+Two Makefile variables customize any test run:
+
+* ``PYTEST_EXTRA_OPTS`` forwards extra arguments to Pytest, such as the skip
+  options above or any other Pytest flag.
+
+* ``PYTEST_CUSTOM_PATH`` specifies a path under the target's test directory
+  (``tests/main`` for ``make test`` and ``tests/system`` for
+  ``make autotest``), down to an individual module, class, or test.
+
+For example::
+
+    # Run only the tests under tests/main/<subdir>.
+    make test PYTEST_CUSTOM_PATH=<subdir>
+
+    # Run a single test by path.
+    make test PYTEST_CUSTOM_PATH=<path/to/module.py>::<TestClass>::<test_method>
+
+    # Skip slow tests.
+    make test PYTEST_EXTRA_OPTS=--skip-slow
+
+    # Skip tests that need a live database.
+    make test PYTEST_EXTRA_OPTS=--skip-db

@@ -21,7 +21,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
-from sqlalchemy.sql import text
+from sqlalchemy.sql import text as sa_text
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
@@ -41,7 +41,7 @@ async def wait_for_db(engine: AsyncEngine, retries: int, delay: float) -> bool:
     for attempt in range(1, retries + 1):
         try:
             async with engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
+                await conn.execute(sa_text("SELECT 1"))
             logger.info("Database is ready")
             return True
 

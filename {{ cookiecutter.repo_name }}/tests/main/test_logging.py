@@ -400,10 +400,10 @@ class TestGetLogger:
 
 
 class TestPublicApi:
-    def test_log_format_literal_values(self) -> None:
+    def test_defines_log_format_values(self) -> None:
         assert set(get_args(LogFormatT)) == {"json", "console"}
 
-    def test_dunder_all_exposes_public_callables(self) -> None:
+    def test_dunder_all_lists_public_callables(self) -> None:
         assert set(app_logging.__all__) == {
             "check_log_level",
             "get_logger",
