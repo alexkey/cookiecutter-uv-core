@@ -47,8 +47,7 @@ def _resolve_database_url() -> str | None:
 
 @asynccontextmanager
 async def _ephemeral_engine(url: str, **kwargs: Any) -> AsyncIterator[AsyncEngine]:
-    """Yields a single-use NullPool engine, disposed when the block exits.
-    """
+    """Yields a single-use NullPool engine, disposed when the block exits."""
     engine = create_async_engine(url, poolclass=NullPool, **kwargs)
 
     try:

@@ -26,7 +26,7 @@ from {{ cookiecutter.repo_name }}.app.db.database import (
     describe_engine,
     dispose_engine,
 )
-from tests.utils import assert_log_event_count, parse_json_lines
+from tests.utils import assert_log_event, assert_log_exception, parse_json_lines
 
 if TYPE_CHECKING:
     from tests.main.app.db.conftest import FakeSessionMaker
@@ -112,17 +112,23 @@ class TestCreateEngine:
         assert pool.size() == 3
 
     def test_returns_none_on_failure(
-        self, make_database_url: Callable[..., str]
+        self, cap_json_logs: io.StringIO, make_database_url: Callable[..., str]
     ) -> None:
         url = make_database_url(driver=_INVALID_DRIVER)
         assert create_engine(url) is None
+        assert_log_exception(
+            cap_json_logs, "Error creating a new database engine", "NoSuchModuleError"
+        )
 
     def test_raises_on_failure_when_requested(
-        self, make_database_url: Callable[..., str]
+        self, cap_json_logs: io.StringIO, make_database_url: Callable[..., str]
     ) -> None:
         url = make_database_url(driver=_INVALID_DRIVER)
         with pytest.raises(SQLAlchemyError):
             create_engine(url, raise_on_exc=True)
+        assert_log_exception(
+            cap_json_logs, "Error creating a new database engine", "NoSuchModuleError"
+        )
 
     def test_does_not_leak_password_on_failure(
         self,
@@ -168,13 +174,12 @@ class TestDisposeEngine:
 
     async def test_suppresses_disposal_errors(self, cap_json_logs: io.StringIO) -> None:
         await dispose_engine(cast(AsyncEngine, _EngineWithFailingDispose()))
-        errors = assert_log_event_count(
-            cap_json_logs, "Error occurred during database engine disposal"
+        assert_log_exception(
+            cap_json_logs,
+            "Error occurred during database engine disposal",
+            "SQLAlchemyError",
+            exc_value="dispose failed",
         )
-        record = errors[0]
-        assert record["level"] == "error"
-        assert record["exception"][0]["exc_type"] == "SQLAlchemyError"
-        assert record["exception"][0]["exc_value"] == "dispose failed"
 
     async def test_logs_success_when_verbose(
         self, cap_json_logs: io.StringIO, valid_database_url: str
@@ -182,7 +187,7 @@ class TestDisposeEngine:
         engine = create_engine(valid_database_url)
         assert engine is not None
         await dispose_engine(engine, verbose=True)
-        assert_log_event_count(cap_json_logs, "disposed successfully")
+        assert_log_event(cap_json_logs, "disposed successfully")
 
 
 class TestCreateSessionmaker:
@@ -218,7 +223,7 @@ class TestCreateSessionmaker:
         engine = create_engine(valid_database_url)
         assert engine is not None
         create_sessionmaker(engine, verbose=True)
-        assert_log_event_count(cap_json_logs, "Created new session factory")
+        assert_log_event(cap_json_logs, "Created new session factory")
 
 
 class TestCreateSession:
@@ -242,7 +247,9 @@ class TestCreateSession:
         assert fake.session.closed is True
 
     async def test_reraises_sqlalchemy_error_by_default(
-        self, make_fake_sessionmaker: Callable[[], FakeSessionMaker]
+        self,
+        cap_json_logs: io.StringIO,
+        make_fake_sessionmaker: Callable[[], FakeSessionMaker],
     ) -> None:
         fake = make_fake_sessionmaker()
         with pytest.raises(SQLAlchemyError):
@@ -250,18 +257,35 @@ class TestCreateSession:
                 raise SQLAlchemyError("boom")
         assert fake.session.transaction.exit_exc_type is SQLAlchemyError
         assert fake.session.closed is True
+        assert_log_exception(
+            cap_json_logs,
+            "Database error during transaction",
+            "SQLAlchemyError",
+            exc_value="boom",
+        )
+        assert_log_event(cap_json_logs, "Transaction rolled back", level="error")
 
     async def test_swallows_sqlalchemy_error_when_not_raising(
-        self, make_fake_sessionmaker: Callable[[], FakeSessionMaker]
+        self,
+        cap_json_logs: io.StringIO,
+        make_fake_sessionmaker: Callable[[], FakeSessionMaker],
     ) -> None:
         fake = make_fake_sessionmaker()
         async with create_session(cast(SessionMakerT, fake), raise_on_exc=False):
             raise SQLAlchemyError("boom")
         assert fake.session.transaction.exit_exc_type is SQLAlchemyError
         assert fake.session.closed is True
+        assert_log_exception(
+            cap_json_logs,
+            "Database error during transaction",
+            "SQLAlchemyError",
+            exc_value="boom",
+        )
 
     async def test_reraises_unexpected_error_by_default(
-        self, make_fake_sessionmaker: Callable[[], FakeSessionMaker]
+        self,
+        cap_json_logs: io.StringIO,
+        make_fake_sessionmaker: Callable[[], FakeSessionMaker],
     ) -> None:
         fake = make_fake_sessionmaker()
         with pytest.raises(RuntimeError):
@@ -269,18 +293,34 @@ class TestCreateSession:
                 raise RuntimeError("boom")
         assert fake.session.transaction.exit_exc_type is RuntimeError
         assert fake.session.closed is True
+        assert_log_exception(
+            cap_json_logs,
+            "Unexpected error during transaction",
+            "RuntimeError",
+            exc_value="boom",
+        )
 
     async def test_swallows_unexpected_error_when_not_raising(
-        self, make_fake_sessionmaker: Callable[[], FakeSessionMaker]
+        self,
+        cap_json_logs: io.StringIO,
+        make_fake_sessionmaker: Callable[[], FakeSessionMaker],
     ) -> None:
         fake = make_fake_sessionmaker()
         async with create_session(cast(SessionMakerT, fake), raise_on_exc=False):
             raise RuntimeError("boom")
         assert fake.session.transaction.exit_exc_type is RuntimeError
         assert fake.session.closed is True
+        assert_log_exception(
+            cap_json_logs,
+            "Unexpected error during transaction",
+            "RuntimeError",
+            exc_value="boom",
+        )
 
     async def test_reraises_task_cancellation_even_when_not_raising(
-        self, make_fake_sessionmaker: Callable[[], FakeSessionMaker]
+        self,
+        cap_json_logs: io.StringIO,
+        make_fake_sessionmaker: Callable[[], FakeSessionMaker],
     ) -> None:
         fake = make_fake_sessionmaker()
         with pytest.raises(asyncio.CancelledError):
@@ -288,6 +328,11 @@ class TestCreateSession:
                 raise asyncio.CancelledError
         assert fake.session.transaction.exit_exc_type is asyncio.CancelledError
         assert fake.session.closed is True
+        assert_log_exception(
+            cap_json_logs,
+            "Database session cancelled by asyncio task",
+            "CancelledError",
+        )
 
     async def test_logs_lifecycle_with_context_when_verbose(
         self,
@@ -312,6 +357,7 @@ class TestCreateSession:
 class TestPublicApi:
     def test_dunder_all_lists_public_helpers(self) -> None:
         assert set(database.__all__) == {
+            # pylint: disable=duplicate-code
             "SessionMakerT",
             "DEFAULT_ASYNC_ENGINE_PARAMS",
             "DEFAULT_ASYNC_SESSION_PARAMS",

@@ -119,6 +119,10 @@ test = [
     "pytest~=9.1.0",
 ]
 
+[tool.deptry]
+# Modules that should be considered as local ones.
+known_first_party = ["tests"]
+
 [tool.deptry.per_rule_ignores]
 DEP001 = [
     # Imported but missing from the dependency definitions.

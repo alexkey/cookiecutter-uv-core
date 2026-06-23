@@ -49,8 +49,10 @@ endif
 
 ifeq ($(shell which rg),)
 	GREP = grep
+	GREP_OPTS = --extended-regexp
 else
 	GREP = rg
+	GREP_OPTS =
 endif
 
 GIT = git
@@ -160,12 +162,10 @@ PACKAGE_NOTES = \
 	TODO \
 	XXX
 NOTES_CONTEXT ?= 5
-NOTES_EXCLUDE =
-# Example usage:
-#     NOTES_EXCLUDE = \
-#	      $(notdir /path/to/dir) \
-#	      Makefile \
-#	      pylintrc
+# Example usage: NOTES_EXCLUDE = $(notdir /path/to/dir)
+NOTES_EXCLUDE = \
+	      Makefile \
+	      pylintrc
 NOTES_EXCLUDE_FILTER = \
 	$(foreach pattern,${NOTES_EXCLUDE}, /${pattern}/d;)
 
@@ -183,9 +183,17 @@ PYTEST_SYSTEM_DIR = system
 PYTEST_DURATIONS ?= 10
 PYTEST_LOG_CLI ?= false
 PYTEST_LOG_CLI_LEVEL ?= INFO
+
+# Live logging needs capture off.
+ifeq ($(PYTEST_LOG_CLI),true)
+	PYTEST_CAPTURE ?= no
+else
+	PYTEST_CAPTURE ?= fd
+endif
+
 PYTEST_OPTS = \
 	-vv \
-	--capture=no \
+	--capture=$(PYTEST_CAPTURE) \
 	--durations=$(PYTEST_DURATIONS) \
 	--override-ini="log_cli=$(PYTEST_LOG_CLI)" \
 	--override-ini="log_cli_level=$(PYTEST_LOG_CLI_LEVEL)"
@@ -204,7 +212,7 @@ endef
 define show_notes_helper
 	@for tag in $(PACKAGE_NOTES); do \
 		echo -e "\n#---\n# $${tag}\n#---\n" ; \
-		$(GREP) --context=$(NOTES_CONTEXT) "[^=]\b$${tag}\b" $$( \
+		$(GREP) $(GREP_OPTS) --context=$(NOTES_CONTEXT) "\b$${tag}(\([^)]*\))?:" $$( \
 			${1} \
 			| sort -u \
 			| ${SED} '${NOTES_EXCLUDE_FILTER}' \
@@ -379,6 +387,9 @@ ifdef PYTEST_LOG_CLI
 endif
 ifdef PYTEST_LOG_CLI_LEVEL
 	$(info PYTEST_LOG_CLI_LEVEL -> `$(PYTEST_LOG_CLI_LEVEL)`)
+endif
+ifdef PYTEST_CAPTURE
+	$(info PYTEST_CAPTURE -> `$(PYTEST_CAPTURE)`)
 endif
 
 	$(info PYTEST_OPTS -> `$(PYTEST_OPTS)`)

@@ -77,28 +77,23 @@ def valid_database_url() -> str:
     return VALID_DATABASE_URL
 
 
-@pytest.fixture
-def cap_json_logs() -> Iterator[io.StringIO]:
-    """Captures application logs as JSON and isolates process-wide logging state.
-
-    Yields:
-        The stream receiving JSON log lines, parseable with `parse_json_lines`.
-    """
+@pytest.fixture(autouse=True)
+def reset_logging_state() -> Iterator[None]:
+    """Isolates process-wide logging state around every test."""
     logger = logging.getLogger()
     handlers = logger.handlers[:]
     level = logger.level
 
-    stream = io.StringIO()
-    setup_logging("debug", "json", log_stream=cast(TextIO, stream))
-
     try:
-        yield stream
+        yield
     finally:
+        # Remove any handler now present that was not in the original snapshot.
         for hnd in logger.handlers[:]:
             if hnd not in handlers:
                 logger.removeHandler(hnd)
                 hnd.close()
 
+        # Re-add any original handler that a test removed.
         for hnd in handlers:
             if hnd not in logger.handlers:
                 logger.addHandler(hnd)
@@ -107,3 +102,17 @@ def cap_json_logs() -> Iterator[io.StringIO]:
 
         structlog.contextvars.clear_contextvars()
         structlog.reset_defaults()
+
+
+@pytest.fixture
+def cap_json_logs() -> Iterator[io.StringIO]:
+    """Captures application logs as JSON for assertions with `parse_json_lines`.
+
+    Yields:
+        The stream receiving JSON log lines. The autouse `reset_logging_state` fixture
+        removes the handler installed here during teardown.
+    """
+    stream = io.StringIO()
+    setup_logging("debug", "json", log_stream=cast(TextIO, stream))
+
+    yield stream

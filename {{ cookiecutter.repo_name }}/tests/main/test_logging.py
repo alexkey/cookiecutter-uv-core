@@ -4,12 +4,11 @@ import io
 import json
 import logging
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from typing import TextIO, cast, get_args
 from unittest.mock import Mock
 
 import pytest
-import structlog
 
 from {{ cookiecutter.repo_name }} import logging as app_logging
 from {{ cookiecutter.repo_name }}.logging import (
@@ -24,7 +23,7 @@ from {{ cookiecutter.repo_name }}.logging import (
     is_level_enabled,
     setup_logging,
 )
-from tests.utils import parse_json_lines
+from tests.utils import assert_log_event, parse_json_lines
 
 
 def _find_app_handler() -> logging.Handler | None:
@@ -32,33 +31,6 @@ def _find_app_handler() -> logging.Handler | None:
         if handler.get_name() == _HANDLER_NAME:
             return handler
     return None
-
-
-@pytest.fixture(autouse=True)
-def _reset_logging_state() -> Iterator[None]:
-    """Restores process-wide logging state around every test."""
-    logger = logging.getLogger()
-    handlers = logger.handlers[:]
-    level = logger.level
-
-    try:
-        yield
-    finally:
-        # Remove any handler now present that was not in the original snapshot.
-        for hnd in logger.handlers[:]:
-            if hnd not in handlers:
-                logger.removeHandler(hnd)
-                hnd.close()
-
-        # Re-add any original handler that the test removed.
-        for hnd in handlers:
-            if hnd not in logger.handlers:
-                logger.addHandler(hnd)
-
-        logger.setLevel(level)
-
-        structlog.contextvars.clear_contextvars()
-        structlog.reset_defaults()
 
 
 class TestCheckLogLevel:
@@ -319,10 +291,13 @@ class TestSetupLogging:
         stream = io.StringIO()
         setup_logging("debug", "json", log_stream=cast(TextIO, stream))
         logging.getLogger("third_party").warning("from stdlib")
-        record = parse_json_lines(stream)[0]
-        assert record["event"] == "from stdlib"
-        assert record["level"] == "warning"
-        assert record["logger"] == "third_party"
+        assert_log_event(
+            stream,
+            "from stdlib",
+            event="from stdlib",
+            level="warning",
+            logger="third_party",
+        )
 
     def test_cache_logger_on_first_use_still_logs(self) -> None:
         stream = io.StringIO()
@@ -395,8 +370,7 @@ class TestGetLogger:
         stream = io.StringIO()
         setup_logging("debug", "json", log_stream=cast(TextIO, stream))
         get_logger("my.component").info("ping")
-        record = parse_json_lines(stream)[0]
-        assert record["logger"] == "my.component"
+        assert_log_event(stream, "ping", logger="my.component")
 
 
 class TestPublicApi:
