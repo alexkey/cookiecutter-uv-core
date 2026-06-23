@@ -12,7 +12,7 @@ The template also includes a comprehensive Makefile-driven workflow for
 dependency management, containerization, code quality, and testing.
 
 Get Started
------------
+===========
 
 This repository is a Cookiecutter_ template for generating a new Python service
 with the project structure, tooling, and development workflow already set up.
@@ -78,12 +78,67 @@ After generating the project, change into its directory and follow the
 `Prerequisites`_ and `Features`_ sections below to verify your tools, create
 the environment, and start working.
 
+A Typical Session
+-----------------
+
+The following outlines a typical first session with the generated
+``foobar_baz`` sample project, from environment setup to a running service.
+
+Lock the dependencies, create the virtual environment, and install the
+project::
+
+    cd foobar_baz
+    make requirements
+    make venv
+    make install
+
+Optionally, activate the environment with the project's ``venv`` helper so the
+commands that follow can be run directly::
+
+    . ./venv
+
+Because the project is managed with *uv*, this is not required: any command can
+instead be run within the project environment by prefixing it with ``uv run``,
+such as ``uv run make test`` or ``uv run foobar-baz``.
+
+Check formatting, run the linters, and run the unit tests::
+
+    make check-format
+    make lint
+    make test
+
+Build the image and bring up the service stack with Compose. The
+``make docker-compose`` target runs in the foreground and tears the stack down
+on exit, so run the commands that follow from a second shell while it stays
+up::
+
+    make docker-build
+    make docker-compose
+
+Provide the database URL, pointing at the PostgreSQL port that Compose
+publishes on ``localhost``. Either export it for the current shell::
+
+    export FOOBAR_DATABASE_URL="postgresql+asyncpg://database:database@localhost:5432/database"
+
+or set the same value persistently in the project's ``.env.local`` file, which
+the settings loader reads automatically.
+
+Run the system tests against the running database::
+
+    make autotest
+
+Start the service. It logs its resolved configuration on startup::
+
+    foobar-baz
+    2026-06-22 21:06:34 [debug    ] Settings(LOG_LEVEL='DEBUG', LOG_FORMAT='console', LOG_COLORS=True, LOG_VERBOSE=True, DATABASE_URL=SecretStr('**********')) [foobar_baz.app.__main__] filename=__main__.py func_name=main lineno=24 process=46582 thread=140704445131008
+    2026-06-22 21:06:34 [info     ] Welcome to foobar-baz version 0.1.0 [foobar_baz.app.__main__] filename=__main__.py func_name=main lineno=28 process=46582 thread=140704445131008
+
 .. _Cookiecutter: https://cookiecutter.readthedocs.io/
 .. _uv: https://docs.astral.sh/uv/
 .. _`SPDX license identifier`: https://spdx.org/licenses/
 
 Prerequisites
--------------
+=============
 
 To build, package, and work with this project, several tools must be installed.
 
@@ -145,7 +200,7 @@ commands:
 .. _Pytest: https://docs.pytest.org/en/stable/
 
 Features
---------
+========
 
 **Managing Python**
 
@@ -266,12 +321,13 @@ The project includes several utility targets to help manage it:
   ``make mostlyclean``.
 
 Usage
------
+=====
 
 The generated service provides three foundational runtime facilities: typed
 configuration, structured logging, and asynchronous database access.
 
-**Configuration** (``config.py``)
+Configuration (``config.py``)
+-----------------------------
 
 Runtime configuration is centralized in a typed Pydantic ``Settings`` model and
 read through a cached accessor::
@@ -297,7 +353,8 @@ read through a cached accessor::
   ``postgresql+asyncpg`` driver and include a host and a database name. It is
   held as a ``SecretStr`` and masked when settings are logged or printed.
 
-**Logging** (``logging.py``)
+Logging (``logging.py``)
+------------------------
 
 Logging is built on *structlog* and applies uniformly to records emitted
 through both *structlog* and the standard library. Configure it once during
@@ -330,7 +387,8 @@ startup, driving it from the settings above::
   as keyword arguments. Guard expensive log preparation with
   ``is_level_enabled(logger)``.
 
-**Database** (``database.py``)
+Database (``database.py``)
+--------------------------
 
 Database access uses asynchronous *SQLAlchemy* over the ``postgresql+asyncpg``
 driver. Helper functions cover the full lifecycle: creating and disposing the
@@ -413,7 +471,8 @@ back automatically::
     connections when they are retrieved from the pool, ``pool_recycle`` helps
     avoid reaching that state in the first place.
 
-**Testing**
+Testing
+-------
 
 Tests run under *Pytest*. As mentioned above, the ``make test`` and
 ``make autotest`` targets run the project's tests::
@@ -432,15 +491,18 @@ markers, applied in test code as ``@pytest.mark.slow`` and
 carrying it:
 
 * ``slow`` marks tests that are expensive to run; pass ``--skip-slow`` to skip
-  them.
+  them. No test currently carries this marker, so ``--skip-slow`` has no effect
+  yet.
 
 * ``requires_db`` marks tests that need a live database; pass ``--skip-db`` to
-  skip them.
+  skip them. This marker is used only by tests in ``tests/system``; therefore,
+  ``--skip-db`` is meaningful only under integration testing with
+  ``make autotest``.
 
 The two options are independent and may be combined, for example
 ``PYTEST_EXTRA_OPTS="--skip-slow --skip-db"``.
 
-Two Makefile variables customize any test run:
+Several Makefile variables customize any test run:
 
 * ``PYTEST_EXTRA_OPTS`` forwards extra arguments to Pytest, such as the skip
   options above or any other Pytest flag.
@@ -448,6 +510,20 @@ Two Makefile variables customize any test run:
 * ``PYTEST_CUSTOM_PATH`` specifies a path under the target's test directory
   (``tests/main`` for ``make test`` and ``tests/system`` for
   ``make autotest``), down to an individual module, class, or test.
+
+* ``PYTEST_DURATIONS`` reports the slowest tests after a run (Pytest's
+  ``--durations``); default ``10``.
+
+* ``PYTEST_LOG_CLI`` (default ``false``) enables Pytest's live logging,
+  streaming each log record to the console as the run proceeds;
+  ``PYTEST_LOG_CLI_LEVEL`` (default ``INFO``) sets its threshold. Records
+  render through Pytest's own formatter as a raw dict, not the application's
+  JSON or console format, and a traceback appears only for ``log.exception()``
+  records.
+
+* ``PYTEST_CAPTURE`` selects Pytest's output capture mode (``--capture``); it
+  defaults to ``fd`` and is forced to ``no`` when ``PYTEST_LOG_CLI=true``,
+  since live logging requires capture to be off.
 
 For example::
 
@@ -461,4 +537,93 @@ For example::
     make test PYTEST_EXTRA_OPTS=--skip-slow
 
     # Skip tests that need a live database.
-    make test PYTEST_EXTRA_OPTS=--skip-db
+    make autotest PYTEST_EXTRA_OPTS=--skip-db
+
+    # Repeat a single test 10 times to surface flakiness, via the pytest-repeat
+    # plugin's --count option. Pair it with PYTEST_CUSTOM_PATH and pick a test
+    # that exercises cached or global state, such as the settings singleton
+    # here.
+    make test \
+      PYTEST_CUSTOM_PATH=app/core/test_config.py::TestGetSettings::test_reload_picks_up_changed_environment \
+      PYTEST_EXTRA_OPTS=--count=10
+
+Test utilities (``tests/utils.py``)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Helpers shared across the suite, importable as
+``from tests.utils import <func>``:
+
+* ``parse_json_lines(stream)`` parses a captured JSON-log ``StringIO`` into a
+  list of records (one ``dict`` per line), skipping blanks.
+
+* ``assert_log_event(stream, match, *, count=1, **fields)`` asserts that
+  exactly ``count`` captured records contain ``match`` as a substring of their
+  ``event`` and that every match equals each ``**fields`` pair (for example
+  ``level="error"``), returning the matches for further inspection.
+
+* ``assert_log_exception(stream, match, exc_type, *, exc_value=None, level="error")``
+  asserts that a single matching record logged an exception of ``exc_type``,
+  searching the whole structured ``exception`` chain (robust to chaining) and
+  optionally checking ``exc_value``. Prefer it over indexing
+  ``record["exception"]`` by hand.
+
+* ``_database_url(...)`` builds a database URL from individual components, each
+  defaulting to a module-level constant (``_DRIVER``, ``_USER``, ``_PASSWORD``,
+  ``_HOST``, ``_PORT``, ``_DATABASE``); ``VALID_DATABASE_URL`` is the
+  all-defaults URL. These back the ``database_*`` fixtures below.
+
+Fixtures
+^^^^^^^^
+
+Fixtures are defined in ``conftest.py`` files and apply to every test at or
+below their directory. With *pytest-asyncio* running in auto mode by default,
+async tests and fixtures require no decorators.
+
+``tests/conftest.py`` (whole suite):
+
+* ``rng`` - a session-scoped, seeded ``random.Random``; the seed is printed in
+  the test header and can be pinned with
+  ``{{ cookiecutter.env_prefix }}TEST_SEED``. This file also registers the
+  ``slow`` and ``requires_db`` markers above.
+
+``tests/main/conftest.py`` (unit tests, ``make test``):
+
+* ``reset_logging_state`` - autouse; snapshots and restores process-wide
+  logging state around every test to prevent configuration from leaking between
+  tests.
+
+* ``cap_json_logs`` - configures JSON logging to a ``StringIO`` and yields it;
+  read it with the ``tests/utils.py`` helpers above.
+
+* ``make_fake_stream`` - a factory for a fake stream with a configurable
+  ``isatty()``, used to exercise color and TTY decisions.
+
+* ``database_driver``, ``database_user``, ``database_password``,
+  ``database_host``, ``database_port``, ``database_name`` - the individual URL
+  components; ``make_database_url`` is the bare URL factory and
+  ``valid_database_url`` the all-defaults URL. Assert against these rather than
+  hard-coded URL strings.
+
+``tests/main/app/db/conftest.py`` (database unit tests):
+
+* ``make_fake_sessionmaker`` - returns the ``FakeSessionMaker`` class (with
+  ``FakeSession`` and ``FakeTransaction``), an in-memory async context manager
+  used by ``create_session()`` in tests; inspect the ``session`` and
+  ``transaction`` attributes to assert commit versus rollback without a live
+  database.
+
+``tests/system/conftest.py`` (integration tests, ``make autotest``):
+
+* ``database_url`` - session-scoped; resolves the real database URL from
+  ``{{ cookiecutter.env_prefix }}DATABASE_URL`` and skips the suite when it is
+  unset, invalid, or unreachable.
+
+* ``database_schema`` - session-scoped; creates a dedicated ``itest_<random>``
+  schema for the run and drops it with ``CASCADE`` afterward.
+
+* ``database_engine`` / ``database_sessionmaker`` - a real engine bound to the
+  configured database (disposed after each test) and a session factory bound to
+  it.
+
+* ``items_table`` - creates an isolated throwaway table in the run schema and
+  drops it after the test.
