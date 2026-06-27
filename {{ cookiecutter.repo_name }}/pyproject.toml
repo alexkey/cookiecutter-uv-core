@@ -51,7 +51,7 @@ dependencies = [
 # Defines entry points for command-line execution.
 # Example: `[uv run] {{ cookiecutter.service_name }}` to run the package.
 
-{{ cookiecutter.service_name }} = "{{ cookiecutter.repo_name }}.app.__main__:main"
+{{ cookiecutter.service_name }} = "{{ cookiecutter.repo_name }}.app.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.11.20,<0.12"]

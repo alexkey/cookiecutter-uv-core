@@ -5,7 +5,7 @@ cookiecutter-uv-core
 *cookiecutter-uv-core* is a Cookiecutter_ template for scaffolding modern
 Python services managed with uv_. It generates a typed ``src``-layout package
 with essential foundations already in place, including layered configuration
-with Pydantic, structured logging with *structlog*, asynchronous *SQLAlchemy*
+with *Pydantic*, structured logging with *structlog*, asynchronous *SQLAlchemy*
 access to PostgreSQL, a CLI entry point, and multi-platform Docker images.
 
 The template also includes a comprehensive Makefile-driven workflow for
@@ -99,7 +99,7 @@ commands that follow can be run directly::
 
 Because the project is managed with *uv*, this is not required: any command can
 instead be run within the project environment by prefixing it with ``uv run``,
-such as ``uv run make test`` or ``uv run foobar-baz``.
+such as ``uv run make test`` or ``uv run foobar-baz run``.
 
 Check formatting, run the linters, and run the unit tests::
 
@@ -129,9 +129,10 @@ Run the system tests against the running database::
 
 Start the service. It logs its resolved configuration on startup::
 
-    foobar-baz
-    2026-06-22 21:06:34 [debug    ] Settings(LOG_LEVEL='DEBUG', LOG_FORMAT='console', LOG_COLORS=True, LOG_VERBOSE=True, DATABASE_URL=SecretStr('**********')) [foobar_baz.app.__main__] filename=__main__.py func_name=main lineno=24 process=46582 thread=140704445131008
-    2026-06-22 21:06:34 [info     ] Welcome to foobar-baz version 0.1.0 [foobar_baz.app.__main__] filename=__main__.py func_name=main lineno=28 process=46582 thread=140704445131008
+    foobar-baz run
+    2026-06-28 16:50:46 [debug    ] Settings(LOG_LEVEL='DEBUG', LOG_FORMAT='console', LOG_COLORS=True, LOG_VERBOSE=True, DATABASE_URL=SecretStr('**********')) [foobar_baz.app.cli._decorators] filename=_decorators.py func_name=wrapper lineno=56 process=76586 thread=140704445131008
+    2026-06-28 16:50:46 [info     ] Welcome to foobar-baz version 0.1.0 [foobar_baz.app.cli._decorators] filename=_decorators.py func_name=wrapper lineno=58 process=76586 thread=140704445131008
+    ...
 
 .. _Cookiecutter: https://cookiecutter.readthedocs.io/
 .. _uv: https://docs.astral.sh/uv/
@@ -201,6 +202,8 @@ commands:
 
 Features
 ========
+
+The generated project includes a Makefile whose targets are grouped by concern.
 
 **Managing Python**
 
@@ -274,14 +277,14 @@ lint, format, and test the codebase:
     last ``GIT_DEPTH`` commits: ``make show-notes-recent``.
 
 * Find unused, missing, and transitive dependencies: ``make check-deps``.
-  Tune Deptry's settings in the ``[tool.deptry]`` section of
+  Tune *Deptry*'s settings in the ``[tool.deptry]`` section of
   ``pyproject.toml``.
 
 * Analyze the code:
 
-  - Lint with Ruff: ``make check-ruff``;
-  - Perform static type checking with Mypy: ``make check-mypy``;
-  - Perform code analysis with Pylint: ``make check-pylint``;
+  - Lint with *Ruff*: ``make check-ruff``;
+  - Perform static type checking with *Mypy*: ``make check-mypy``;
+  - Perform code analysis with *Pylint*: ``make check-pylint``;
   - Run all of the above analysis tools at once: ``make lint``.
 
   The quality assurance tools are configured by the ``MYPY_OPTS`` and
@@ -304,12 +307,12 @@ lint, format, and test the codebase:
   currently a stub.
 
   Both targets also accept ``PYTEST_EXTRA_OPTS`` and ``PYTEST_CUSTOM_PATH`` to
-  forward extra Pytest arguments and restrict the run to specific paths; see
+  forward extra *Pytest* arguments and restrict the run to specific paths; see
   *Testing* under the section `Usage`_ for details.
 
 **Auxiliary Targets**
 
-The project includes several utility targets to help manage it:
+The project provides several auxiliary targets:
 
 * View all available targets: ``make help``.
 
@@ -324,13 +327,15 @@ Usage
 =====
 
 The generated service provides three foundational runtime facilities: typed
-configuration, structured logging, and asynchronous database access.
+configuration, structured logging, and asynchronous database access. An
+application runtime and a *Click* command-line interface compose these into a
+runnable service.
 
 Configuration (``config.py``)
 -----------------------------
 
-Runtime configuration is centralized in a typed Pydantic ``Settings`` model and
-read through a cached accessor::
+Runtime configuration is centralized in a typed *Pydantic* ``Settings`` model
+and read through a cached accessor::
 
     from {{ cookiecutter.repo_name }} import get_settings
 
@@ -429,7 +434,7 @@ back automatically::
 * ``create_session()`` is an async context manager that opens one session and
   wraps the enclosed block in a single transaction. The transaction commits
   when the block exits cleanly and rolls back on any exception; the session is
-  always closed. Use one block per unit of work and let it own the boundary -
+  always closed. Use one block per unit of work and let it own the boundary;
   do not call ``session.begin()`` or ``session.commit()`` yourself inside it.
 
   - Database and unexpected errors are re-raised after rollback by default
@@ -471,6 +476,121 @@ back automatically::
     connections when they are retrieved from the pool, ``pool_recycle`` helps
     avoid reaching that state in the first place.
 
+Application runtime and CLI
+---------------------------
+
+The service is exposed as a *Click* command-line program, and an application
+lifespan provides the shared resources each command needs while it runs.
+
+Runtime and application lifespan
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The service can be launched in two ways: the console script
+``{{ cookiecutter.service_name }}`` (declared in the ``[project.scripts]``
+table of ``pyproject.toml``) or ``python -m {{ cookiecutter.repo_name }}``.
+Both call ``main()``, which hands control to the *Click* group ``cli``. The
+group parses arguments and dispatches to a subcommand.
+
+The application lifespan, not any individual command, owns the shared
+resources. ``app_lifespan()`` is an async context manager that wraps a command
+body and holds them for its duration:
+
+* On entry, it creates the database engine and session factory, and yields a
+  shared ``AppState``.
+
+* On exit, it disposes the engine, whether the body returned normally or
+  raised, so pooled connections are released on every path.
+
+* ``AppState`` is a typed mapping of the resources the lifespan provides to the
+  command body; it carries the session factory, and further process-wide
+  resources are added by extending it.
+
+* When the engine cannot be created, the lifespan fails fast and exits with
+  ``EXIT_GENERAL_ERROR`` instead of yielding a half-initialized state.
+
+This follows the database guidance above (create the engine and session
+factory once, then dispose them once), so a command opens sessions from the
+supplied factory and never manages the engine itself.
+
+Creating commands and lazy loading
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The template ships one subcommand, ``run``, whose body is a stub: it enters the
+lifespan and leaves a placeholder for the service's own logic. Further behavior
+is added as more subcommands, which the group loads lazily. ``LazyGroup``
+imports a subcommand's module only when that command is resolved, which keeps
+startup cheap:
+
+* The group's ``--help`` and ``--version`` respond without importing any
+  command.
+
+* Invoking one command never imports another, so a command pays for its
+  dependencies only when it runs.
+
+Creating a command therefore takes two steps. First, place a module exposing
+a ``click.Command`` under ``app/cli/commands/``. For example,
+``app/cli/commands/healthcheck.py`` reuses the lifespan and the decorators
+below::
+
+    import click
+
+    from {{ cookiecutter.repo_name }}.app.cli._decorators import (
+        announce,
+        configure,
+        run_async,
+    )
+    from {{ cookiecutter.repo_name }}.app.runtime import app_lifespan
+
+
+    @click.command("healthcheck", help="Verify the database connection.")
+    @configure
+    @announce
+    @run_async
+    async def healthcheck_cmd() -> None:
+        async with app_lifespan() as app_state:
+
+            session_maker = app_state["session_maker"]
+
+            # Open sessions from session_maker and run the check here.
+            ...
+
+Second, register the command object by adding one entry to the ``_SUBCOMMANDS``
+mapping in ``app/cli/__init__.py``, keyed by the command name and valued by the
+dotted path of that object::
+
+    _SUBCOMMANDS = MappingProxyType(
+        {
+            "run": "{{ cookiecutter.repo_name }}.app.cli.commands.run.run_cmd",
+            "healthcheck": "{{ cookiecutter.repo_name }}.app.cli.commands.healthcheck.healthcheck_cmd",
+        }
+    )
+
+The entry is verified to be a ``click.Command`` when it is loaded, and its
+module is imported only when ``{{ cookiecutter.service_name }} healthcheck`` is
+invoked.
+
+Helper decorators
+^^^^^^^^^^^^^^^^^
+
+A small set of decorators factors out the setup that every command shares,
+stacked beneath ``@click.command`` in a specific order, as the example above
+shows:
+
+* ``configure`` resolves settings and configures logging before the body runs,
+  which guarantees that logging uses the effective configuration from the very
+  first record.
+
+* ``announce`` logs the resolved settings at debug level, behind the same level
+  guard recommended above, then a version banner at info level.
+
+* ``run_async`` adapts an ``async def`` body to the synchronous callback that
+  *Click* expects, driving it to completion with ``asyncio.run()``.
+
+Because decorators wrap from the bottom up but execute from the top down,
+logging is configured first, the startup announcement is logged next, and the
+asynchronous body runs last, where it typically enters ``app_lifespan()`` to
+acquire the shared resources for the lifetime of the command.
+
 Testing
 -------
 
@@ -504,24 +624,24 @@ The two options are independent and may be combined, for example
 
 Several Makefile variables customize any test run:
 
-* ``PYTEST_EXTRA_OPTS`` forwards extra arguments to Pytest, such as the skip
-  options above or any other Pytest flag.
+* ``PYTEST_EXTRA_OPTS`` forwards extra arguments to *Pytest*, such as the skip
+  options above or any other *Pytest* flag.
 
 * ``PYTEST_CUSTOM_PATH`` specifies a path under the target's test directory
   (``tests/main`` for ``make test`` and ``tests/system`` for
   ``make autotest``), down to an individual module, class, or test.
 
-* ``PYTEST_DURATIONS`` reports the slowest tests after a run (Pytest's
+* ``PYTEST_DURATIONS`` reports the slowest tests after a run (*Pytest*'s
   ``--durations``); default ``10``.
 
-* ``PYTEST_LOG_CLI`` (default ``false``) enables Pytest's live logging,
+* ``PYTEST_LOG_CLI`` (default ``false``) enables *Pytest*'s live logging,
   streaming each log record to the console as the run proceeds;
   ``PYTEST_LOG_CLI_LEVEL`` (default ``INFO``) sets its threshold. Records
-  render through Pytest's own formatter as a raw dict, not the application's
+  render through *Pytest*'s own formatter as a raw dict, not the application's
   JSON or console format, and a traceback appears only for ``log.exception()``
   records.
 
-* ``PYTEST_CAPTURE`` selects Pytest's output capture mode (``--capture``); it
+* ``PYTEST_CAPTURE`` selects *Pytest*'s output capture mode (``--capture``); it
   defaults to ``fd`` and is forced to ``no`` when ``PYTEST_LOG_CLI=true``,
   since live logging requires capture to be off.
 
