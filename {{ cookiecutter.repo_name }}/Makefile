@@ -17,13 +17,14 @@ OS = $(shell uname -s)
 CURDIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 srcdir = $(CURDIR)/src
 testdir = $(CURDIR)/tests
+scriptdir = $(CURDIR)/etc/scripts
 builddir = $(CURDIR)/build
 distdir = $(CURDIR)/dist
 
 PACKAGE_NAME = {{ cookiecutter.repo_name }}
 PACKAGE_VERSION ?= $(strip \
 	$(shell \
-		grep "^ *version *= *" "${CURDIR}/pyproject.toml" \
+		grep "^ *version *= *" "${PYTHON_PROJECT_FILE}" \
 		| tr -d '"' \
 		| cut -d " " -f3 \
 	) \
@@ -73,6 +74,7 @@ version_helper = $(shell ${1} --version \
 # Python
 
 PYTHON_VERSION_FILE ?= $(CURDIR)/.python-version
+PYTHON_PROJECT_FILE ?= $(CURDIR)/pyproject.toml
 
 UV = uv
 UV_VERSION = {{ cookiecutter.uv_version }}
@@ -108,6 +110,13 @@ INSTALL_EXTRAS ?=
 ifdef INSTALL_EXTRAS
 	UV_SYNC_OPT_DEPS = $(foreach extra,${INSTALL_EXTRAS}, --extra=${extra})
 endif
+
+define outdated_helper
+	@set -o pipefail ; \
+		$(UV) tree $(UV_CMD_OPTS) \
+			--color=never --frozen --outdated --depth=1 --all-groups --universal \
+		| { $(GREP) $(GREP_OPTS) --color=never "\(latest: " || true ; }
+endef
 
 ##
 # Docker
@@ -278,15 +287,16 @@ env-check-lockfile:
 ifeq ($(wildcard ${UV_LOCKFILE}),)
 	$(error The project lockfile does not exist: `${UV_LOCKFILE}`)
 endif
-	$(info Requires that the project lockfile (`uv.lock`) is up-to-date. \
-		If the lockfile needs to be updated, the target will exit with an \
-		error \
+	$(info Requires the project lockfile (`uv.lock`). If the lockfile is \
+		out of date, the target either exits with an error or ignores the \
+		unlocked dependency changes; run `make requirements` to update it \
 	)
 
 .PHONY: env-show-python
 # target: env-show-python - Display the environment variables used to configure Python and related tools
 env-show-python:
 	$(info PYTHON_VERSION_FILE -> `$(PYTHON_VERSION_FILE)`)
+	$(info PYTHON_PROJECT_FILE -> `$(PYTHON_PROJECT_FILE)`)
 	$(info UV_VERSION -> `$(UV_VERSION)`)
 	$(info UV_CACHE_DIR -> `$(UV_CACHE_DIR)`)
 	$(info VIRTUALENV -> `$(VIRTUALENV)`)
@@ -445,8 +455,18 @@ requirements-refresh:
 
 .PHONY: requirements-try
 # target: requirements-try - Perform a dry run of an upgrade without writing the lockfile
-requirements-try:
+requirements-try: env-check-python env-check-lockfile
+	$(call outdated_helper)
+	@echo
 	@$(MAKE) requirements UV_LOCK_EXTRA_OPTS="--upgrade --dry-run"
+
+.PHONY: requirements-bump
+# target: requirements-bump - Raise the `~=` and `>=` constraints of outdated packages to the latest versions
+requirements-bump: env-check env-check-python env-check-lockfile
+	$(call outdated_helper) \
+		| $(SED) -r 's/^\S+ ([^ []+).*\(latest: v(.+)\)$$/\1 \2/' \
+		| $(UV) run $(UV_CMD_OPTS) --no-progress --script \
+			"$(scriptdir)/bump_requirements.py" "$(PYTHON_PROJECT_FILE)"
 
 .PHONY: requirements-up
 # target: requirements-up - Upgrade packages, ignoring pinned versions
@@ -510,7 +530,7 @@ docker-info: env-check-docker
 
 .PHONY: docker-build
 # target: docker-build - Build an image from the Dockerfile
-docker-build: env-check-docker
+docker-build: env-check-docker env-check-lockfile
 	@$(DOCKER) buildx build --platform="$(DOCKER_BUILD_PLATFORM)" \
 		$(DOCKER_EXTRA_OPTS) \
 		$(DOCKER_BUILD_ARGS) \
@@ -596,17 +616,17 @@ check-deps: env-check-qa
 .PHONY: check-ruff
 # target: check-ruff - Lint with Ruff
 check-ruff: env-check-qa
-	@$(RUFF) check "$(srcdir)" "$(testdir)"
+	@$(RUFF) check "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: check-mypy
 # target: check-mypy - Perform static type checking with Mypy
 check-mypy: env-check-qa
-	@$(MYPY) $(MYPY_OPTS) "$(srcdir)" "$(testdir)"
+	@$(MYPY) $(MYPY_OPTS) "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: check-pylint
 # target: check-pylint - Perform code analysis with Pylint
 check-pylint: env-check-qa
-	@$(PYLINT) $(PYLINT_OPTS) "$(srcdir)" "$(testdir)"
+	@$(PYLINT) $(PYLINT_OPTS) "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: lint
 # target: lint - Run all available code analysis tools
@@ -615,13 +635,13 @@ lint: check-ruff check-mypy check-pylint
 .PHONY: check-format
 # target: check-format - Detect unformatted files
 check-format: env-check-qa
-	@$(RUFF) format --check "$(srcdir)" "$(testdir)"
+	@$(RUFF) format --check "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: format
 # target: format - Format all discovered Python files
 format: env-check-qa
-	@$(RUFF) check --select I --fix "$(srcdir)" "$(testdir)"
-	@$(RUFF) format "$(srcdir)" "$(testdir)"
+	@$(RUFF) check --select I --fix "$(srcdir)" "$(testdir)" "$(scriptdir)"
+	@$(RUFF) format "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: test
 # target: test - Run tests

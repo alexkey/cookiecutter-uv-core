@@ -78,6 +78,10 @@ After generating the project, change into its directory and follow the
 `Prerequisites`_ and `Features`_ sections below to verify your tools, create
 the environment, and start working.
 
+.. _Cookiecutter: https://cookiecutter.readthedocs.io/
+.. _uv: https://docs.astral.sh/uv/
+.. _`SPDX license identifier`: https://spdx.org/licenses/
+
 A Typical Session
 -----------------
 
@@ -134,9 +138,38 @@ Start the service. It logs its resolved configuration on startup::
     2026-06-28 16:50:46 [info     ] Welcome to foobar-baz version 0.1.0 [foobar_baz.app.cli._decorators] filename=_decorators.py func_name=wrapper lineno=58 process=76586 thread=140704445131008
     ...
 
-.. _Cookiecutter: https://cookiecutter.readthedocs.io/
-.. _uv: https://docs.astral.sh/uv/
-.. _`SPDX license identifier`: https://spdx.org/licenses/
+Updating the Dependencies
+-------------------------
+
+Review the current state first. ``make requirements-check`` lists the installed
+packages and flags the outdated ones, transitive dependencies included;
+``make requirements-try`` lists the outdated direct dependencies and previews
+the upgrade that the current constraints allow, without writing the lockfile::
+
+    make requirements-check
+    make requirements-try
+
+Raise the constraints of the outdated direct dependencies, then lock and
+install the upgrade::
+
+    make requirements-bump
+    make requirements-up
+
+``make requirements-bump`` rewrites ``pyproject.toml`` only: it raises the
+``~=`` and ``>=`` clauses to the latest releases and preserves everything else
+in each requirement as written. A requirement whose other clauses would exclude
+the latest release is reported and left unchanged. The outdated versions come
+from the lockfile; lock any pending ``pyproject.toml`` changes first.
+
+``make requirements-up`` re-resolves every package, transitive dependencies
+included, to the newest versions that the constraints allow, then installs
+them. To upgrade only the bumped dependencies and keep the other locked
+versions, run ``make requirements`` and ``make install`` instead.
+
+Confirm the result and check that the project works with the upgraded
+packages::
+
+    make requirements-check
 
 Prerequisites
 =============
@@ -219,8 +252,12 @@ dependencies, and package distributions:
     for the specified package);
   - Refresh all cached data and update the lockfile:
     ``make requirements-refresh``;
-  - Preview a package upgrade without writing the lockfile:
-    ``make requirements-try``;
+  - List the outdated direct dependencies, then preview a package upgrade
+    without writing the lockfile: ``make requirements-try``;
+  - Raise the ``~=`` and ``>=`` constraints of outdated direct dependencies
+    in ``pyproject.toml`` to their latest versions:
+    ``make requirements-bump`` (then update the lockfile as described in
+    `Updating the Dependencies`_);
   - Upgrade packages, ignoring pinned versions, then install them:
     ``make requirements-up``;
   - List and validate the installed packages: ``make requirements-check``;
@@ -308,7 +345,7 @@ lint, format, and test the codebase:
 
   Both targets also accept ``PYTEST_EXTRA_OPTS`` and ``PYTEST_CUSTOM_PATH`` to
   forward extra *Pytest* arguments and restrict the run to specific paths; see
-  *Testing* under the section `Usage`_ for details.
+  *Testing* in the `Usage`_ section for details.
 
 **Auxiliary Targets**
 
@@ -448,8 +485,8 @@ back automatically::
   to ``create_engine()`` and ``create_sessionmaker()``.
 
   - Sessions set ``expire_on_commit=False``. With the default ``True``,
-    attributes are expired after ``commit()``, so the first later access to
-    each attribute triggers an implicit refresh SELECT. Under asyncio, that
+    attributes are expired after ``commit()``, so the first subsequent access
+    to each attribute triggers an implicit refresh SELECT. Under asyncio, that
     implicit I/O can occur outside *SQLAlchemy*'s async bridge and raise
     ``MissingGreenlet``. The tradeoff is that post-commit objects are not
     automatically re-fetched. Server-generated values such as
@@ -555,7 +592,7 @@ below::
             ...
 
 Second, register the command object by adding one entry to the ``_SUBCOMMANDS``
-mapping in ``app/cli/__init__.py``, keyed by the command name and valued by the
+mapping in ``app/cli/__init__.py``, keyed by the command name and mapped to the
 dotted path of that object::
 
     _SUBCOMMANDS = MappingProxyType(
@@ -678,7 +715,7 @@ Helpers shared across the suite, importable as
 
 * ``assert_log_event(stream, match, *, count=1, **fields)`` asserts that
   exactly ``count`` captured records contain ``match`` as a substring of their
-  ``event`` and that every match equals each ``**fields`` pair (for example
+  ``event`` and that every match contains each ``**fields`` pair (for example
   ``level="error"``), returning the matches for further inspection.
 
 * ``assert_log_exception(stream, match, exc_type, *, exc_value=None, level="error")``
