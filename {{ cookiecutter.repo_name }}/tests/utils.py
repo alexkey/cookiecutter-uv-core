@@ -2,12 +2,29 @@ from __future__ import annotations
 
 import io
 import json
-from typing import Any
+from typing import Any, Never
+
+import pytest
 
 type LogRecord = dict[str, Any]
 
 
+def fail_without_traceback(reason: str) -> Never:
+    """Fails the current test, reporting `reason` with no traceback.
+
+    Also omits the chain of an exception being handled.
+    """
+    raise pytest.fail.Exception(reason, pytrace=False) from None
+
+
+# The functions below set the local variable `__tracebackhide__` to `True`, which
+# excludes their frames from the Pytest traceback and ends it at the line of the calling
+# test.
+
+
 def parse_json_lines(stream: io.StringIO) -> list[LogRecord]:
+    __tracebackhide__ = True  # pylint: disable=unused-variable
+
     records: list[LogRecord] = []
 
     for line in stream.getvalue().splitlines():
@@ -40,6 +57,8 @@ def assert_log_event(
         AssertionError: If the stream does not hold exactly `count` records matching
         `match`, or a matching record's field does not equal its expected value.
     """
+    __tracebackhide__ = True  # pylint: disable=unused-variable
+
     matches = [
         record for record in parse_json_lines(stream) if match in record["event"]
     ]
@@ -83,6 +102,8 @@ def assert_log_exception(
         AssertionError: If no single record matches, the record carries no `exception`,
         or the chain lacks an entry of `exc_type`.
     """
+    __tracebackhide__ = True  # pylint: disable=unused-variable
+
     [record] = assert_log_event(stream, match, count=1, level=level)
 
     chain = record.get("exception")

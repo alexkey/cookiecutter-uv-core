@@ -351,7 +351,9 @@ lint, format, and test the codebase:
     ``tests``: ``make autotest``.
 
   ``make autotest`` reads ``PYTEST_DEPLOYMENT`` as its target deployment URL,
-  currently a stub.
+  currently a stub. It also needs a reachable database: it fails unless
+  ``{{ cookiecutter.env_prefix }}DATABASE_URL`` is set and valid, or
+  ``PYTEST_EXTRA_OPTS`` passes ``--skip-db``.
 
   Both targets also accept ``PYTEST_EXTRA_OPTS`` and ``PYTEST_CUSTOM_PATH`` to
   forward extra *Pytest* arguments and restrict the run to specific paths; see
@@ -719,6 +721,10 @@ Test utilities (``tests/utils.py``)
 Helpers shared across the suite, importable as
 ``from tests.utils import <func>``:
 
+* ``fail_without_traceback(reason)`` fails the current test and reports only
+  ``reason``, with no traceback. Use it for unmet external prerequisites, where
+  a traceback adds noise.
+
 * ``parse_json_lines(stream)`` parses a captured JSON-log ``StringIO`` into a
   list of records (one ``dict`` per line), skipping blanks.
 
@@ -781,8 +787,9 @@ async tests and fixtures require no decorators.
 ``tests/system/conftest.py`` (integration tests, ``make autotest``):
 
 * ``database_url`` - session-scoped; resolves the real database URL from
-  ``{{ cookiecutter.env_prefix }}DATABASE_URL`` and skips the suite when it is
-  unset, invalid, or unreachable.
+  ``{{ cookiecutter.env_prefix }}DATABASE_URL``. It fails the suite when the
+  URL is unset or invalid, or the database is unreachable; pass ``--skip-db``
+  to skip the suite instead.
 
 * ``database_schema`` - session-scoped; creates a dedicated ``itest_<random>``
   schema for the run and drops it with ``CASCADE`` afterward.

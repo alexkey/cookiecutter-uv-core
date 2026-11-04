@@ -17,6 +17,7 @@ from {{ cookiecutter.repo_name }}.app.db.database import (
     create_sessionmaker,
     dispose_engine,
 )
+from tests.utils import fail_without_traceback
 
 # Fixtures compose other fixtures by parameter name, which pylint reports as redefining
 # the fixture function from the outer scope. That shadowing is how pytest injects
@@ -37,10 +38,21 @@ _SCHEMA_PREFIX = "itest"
 
 
 def _resolve_database_url() -> str | None:
+    """Returns the configured database URL, or None if it is not set.
+
+    Raises:
+        ValidationError: If any other required setting is missing or a setting is
+            invalid.
+    """
     try:
         settings = get_settings(reload=True)
-    except ValidationError:
-        return None
+    except ValidationError as exc:
+        if all(
+            error["type"] == "missing" and error["loc"] == ("DATABASE_URL",)
+            for error in exc.errors()
+        ):
+            return None
+        raise
 
     return settings.DATABASE_URL.get_secret_value()  # pylint: disable=no-member
 
@@ -56,8 +68,8 @@ async def _ephemeral_engine(url: str, **kwargs: Any) -> AsyncGenerator[AsyncEngi
         await engine.dispose()
 
 
-def _can_connect(url: str) -> bool:
-    """Reports whether a connection to `url` can be established and queried."""
+def _check_connection(url: str) -> None:
+    """Raises the underlying error unless `url` can be connected to and queried."""
 
     async def _ping() -> None:
         async with (
@@ -68,12 +80,7 @@ def _can_connect(url: str) -> bool:
         ):
             await conn.execute(sa_text("SELECT 1"))
 
-    try:
-        asyncio.run(_ping())
-    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-        return False
-
-    return True
+    asyncio.run(_ping())
 
 
 async def _run_ddl(url: str, statement: str) -> None:
@@ -84,13 +91,25 @@ async def _run_ddl(url: str, statement: str) -> None:
 
 @pytest.fixture(scope="session")
 def database_url() -> str:
-    url = _resolve_database_url()
+    try:
+        url = _resolve_database_url()
+    except ValidationError as exc:
+        # The error input holds the raw URL, including its password.
+        reasons = "; ".join(
+            f"{'.'.join(map(str, error['loc']))}: {error['msg']}"
+            for error in exc.errors(include_input=False)
+        )
+        fail_without_traceback(f"invalid settings: {reasons}")
 
     if not url:
-        pytest.skip(f"{_DB_URL_VAR} is not set")
+        fail_without_traceback(
+            f"{_DB_URL_VAR} is not set; pass --skip-db to skip these tests"
+        )
 
-    if not _can_connect(url):
-        pytest.skip(f"database for {_DB_URL_VAR} is not reachable")
+    try:
+        _check_connection(url)
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        fail_without_traceback(f"database for {_DB_URL_VAR} is not reachable: {exc!r}")
 
     return url
 
@@ -103,11 +122,18 @@ def database_schema(database_url: str) -> Iterator[str]:
     def run_ddl(statement: str) -> None:
         asyncio.run(_run_ddl(database_url, statement))
 
-    run_ddl(f"CREATE SCHEMA {schema}")
+    try:
+        run_ddl(f"CREATE SCHEMA {schema}")
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        fail_without_traceback(f"cannot create schema {schema}: {exc!r}")
+
     try:
         yield schema
     finally:
-        run_ddl(f"DROP SCHEMA {schema} CASCADE")
+        try:
+            run_ddl(f"DROP SCHEMA {schema} CASCADE")
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+            fail_without_traceback(f"cannot drop schema {schema}: {exc!r}")
 
 
 @pytest.fixture

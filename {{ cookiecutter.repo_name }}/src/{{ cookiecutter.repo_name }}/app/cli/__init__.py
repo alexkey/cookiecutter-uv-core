@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 import click
 
@@ -9,6 +10,9 @@ from {{ cookiecutter.repo_name }}.app import (
     __version__,
 )
 from {{ cookiecutter.repo_name }}.app.cli._lazy import LazyGroup
+
+if TYPE_CHECKING:
+    from typing import Never
 
 __all__ = [
     "cli",
@@ -32,5 +36,5 @@ def cli() -> None:
     pass
 
 
-def main() -> None:
-    cli()
+def main() -> Never:
+    cli.main()

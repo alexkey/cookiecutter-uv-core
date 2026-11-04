@@ -29,13 +29,15 @@ from {{ cookiecutter.repo_name }}.app.db.database import (
 from tests.utils import assert_log_event, assert_log_exception, parse_json_lines
 
 if TYPE_CHECKING:
+    from typing import Never
+
     from tests.main.app.db.conftest import FakeSessionMaker
 
 _INVALID_DRIVER = "postgresql+nosuchdriver"
 
 
 class _EngineWithFailingDispose:
-    async def dispose(self, **_kwargs: object) -> None:
+    async def dispose(self, **_kwargs: object) -> Never:
         raise SQLAlchemyError("dispose failed")
 
 
