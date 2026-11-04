@@ -24,7 +24,7 @@ from {{ cookiecutter.repo_name }}.app.db.database import (
 # pylint: disable=redefined-outer-name
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterator
     from typing import Any
 
     from sqlalchemy.ext.asyncio import AsyncEngine
@@ -46,7 +46,7 @@ def _resolve_database_url() -> str | None:
 
 
 @asynccontextmanager
-async def _ephemeral_engine(url: str, **kwargs: Any) -> AsyncIterator[AsyncEngine]:
+async def _ephemeral_engine(url: str, **kwargs: Any) -> AsyncGenerator[AsyncEngine]:
     """Yields a single-use NullPool engine, disposed when the block exits."""
     engine = create_async_engine(url, poolclass=NullPool, **kwargs)
 
@@ -60,15 +60,17 @@ def _can_connect(url: str) -> bool:
     """Reports whether a connection to `url` can be established and queried."""
 
     async def _ping() -> None:
-        async with _ephemeral_engine(
-            url, connect_args={"timeout": _CONNECT_TIMEOUT}
-        ) as engine:
-            async with engine.connect() as conn:
-                await conn.execute(sa_text("SELECT 1"))
+        async with (
+            _ephemeral_engine(
+                url, connect_args={"timeout": _CONNECT_TIMEOUT}
+            ) as engine,
+            engine.connect() as conn,
+        ):
+            await conn.execute(sa_text("SELECT 1"))
 
     try:
         asyncio.run(_ping())
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         return False
 
     return True
@@ -76,9 +78,8 @@ def _can_connect(url: str) -> bool:
 
 async def _run_ddl(url: str, statement: str) -> None:
     """Executes a single DDL statement."""
-    async with _ephemeral_engine(url) as engine:
-        async with engine.begin() as conn:
-            await conn.execute(sa_text(statement))
+    async with _ephemeral_engine(url) as engine, engine.begin() as conn:
+        await conn.execute(sa_text(statement))
 
 
 @pytest.fixture(scope="session")

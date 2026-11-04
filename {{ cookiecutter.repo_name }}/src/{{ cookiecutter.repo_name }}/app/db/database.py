@@ -6,17 +6,17 @@ from typing import TYPE_CHECKING, TypedDict
 
 from pydantic import SecretStr
 from sqlalchemy.engine import URL, make_url
-from sqlalchemy.pool import AsyncAdaptedQueuePool
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Query
+from sqlalchemy.pool import AsyncAdaptedQueuePool
 
 from {{ cookiecutter.repo_name }} import get_logger
 from {{ cookiecutter.repo_name }}.app.core.utils import repr_obj
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-    from typing import Any, Callable, Unpack
+    from collections.abc import AsyncGenerator, Callable
+    from typing import Any, Unpack
 
     from sqlalchemy import Pool
     from sqlalchemy.engine.interfaces import IsolationLevel
@@ -26,13 +26,13 @@ if TYPE_CHECKING:
     from sqlalchemy.sql.base import _NoArg
 
 __all__ = [
-    "SessionMakerT",
     "DEFAULT_ASYNC_ENGINE_PARAMS",
     "DEFAULT_ASYNC_SESSION_PARAMS",
+    "SessionMakerT",
     "create_engine",
-    "dispose_engine",
-    "create_sessionmaker",
     "create_session",
+    "create_sessionmaker",
+    "dispose_engine",
 ]
 
 
@@ -95,7 +95,7 @@ class AsyncSessionParams(TypedDict, total=False):
     # Automatically start transactions (equivalent to invoking Session.begin()).
     autobegin: bool
 
-    # When True, all instances will be fully expired after each commit(), so that all
+    # When True, all instances will be fully expired after each commit(), and all
     # attribute/object access subsequent to a completed transaction will load from the
     # most recent database state.
     expire_on_commit: bool
@@ -165,9 +165,9 @@ def describe_engine(engine: AsyncEngine) -> None:
         logger.debug("Pool metrics not available for engine: %r", engine)
         return
 
-    def _call(obj: Any, name: str, sentinel: str = "not available") -> Any:
+    def _call(obj: Any, name: str, sentinel_: str = "not available") -> Any:
         func = getattr(obj, name, None)
-        return func() if callable(func) else sentinel
+        return func() if callable(func) else sentinel_
 
     logger.info(
         "Database connection pool %r: size=%s, checkedout=%s, overflow=%s, timeout=%s",
@@ -208,11 +208,10 @@ def create_engine(
     try:
         engine = create_async_engine(_url, **merged)
     except SQLAlchemyError:
-        logger.error(
+        logger.exception(
             "Error creating a new database engine: URL -> `%s`",
             _redact_database_url(url),
             extra=merged,
-            exc_info=True,
         )
         if raise_on_exc:
             raise
@@ -245,10 +244,9 @@ async def dispose_engine(
             close=True
         )
     except SQLAlchemyError:
-        logger.error(
+        logger.exception(
             "Error occurred during database engine disposal: %r",
             engine,
-            exc_info=True,
         )
         return
 

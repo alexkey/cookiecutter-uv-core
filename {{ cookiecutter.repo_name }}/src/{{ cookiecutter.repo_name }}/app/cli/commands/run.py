@@ -20,5 +20,6 @@ __all__ = [
 @run_async
 async def run_cmd() -> None:
     async with app_lifespan() as app_state:
-        session_maker = app_state["session_maker"]  # noqa: F841
-        ...
+        session_maker = app_state[  # noqa: F841  # pylint: disable=unused-variable
+            "session_maker"
+        ]

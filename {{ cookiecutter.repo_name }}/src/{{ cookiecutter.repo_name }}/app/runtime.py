@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     from {{ cookiecutter.repo_name }}.app.db.database import SessionMakerT
 
 __all__ = [
-    "EXIT_SUCCESS",
     "EXIT_GENERAL_ERROR",
+    "EXIT_SUCCESS",
     "AppState",
     "app_lifespan",
 ]
@@ -33,7 +33,7 @@ class AppState(TypedDict, total=True):
 
 
 @asynccontextmanager
-async def app_lifespan() -> AsyncGenerator[AppState, None]:
+async def app_lifespan() -> AsyncGenerator[AppState]:
     """Yields the shared application state for the duration of a command."""
     settings = get_settings()
     _verbose = settings.LOG_VERBOSE

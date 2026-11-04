@@ -338,16 +338,16 @@ class TestSetupLogging:
 
     def test_preserves_foreign_handlers_by_default(self) -> None:
         root = logging.getLogger()
-        sentinel = logging.NullHandler()
-        root.addHandler(sentinel)
+        sentinel_ = logging.NullHandler()
+        root.addHandler(sentinel_)
         stream = io.StringIO()
         setup_logging("info", "json", log_stream=cast(TextIO, stream))
-        assert sentinel in root.handlers
+        assert sentinel_ in root.handlers
 
     def test_force_remove_handlers_clears_existing(self) -> None:
         root = logging.getLogger()
-        sentinel = logging.NullHandler()
-        root.addHandler(sentinel)
+        sentinel_ = logging.NullHandler()
+        root.addHandler(sentinel_)
         stream = io.StringIO()
         setup_logging(
             "info",
@@ -355,7 +355,7 @@ class TestSetupLogging:
             log_stream=cast(TextIO, stream),
             force_remove_handlers=True,
         )
-        assert sentinel not in root.handlers
+        assert sentinel_ not in root.handlers
         assert [h.get_name() for h in root.handlers] == [_HANDLER_NAME]
 
 

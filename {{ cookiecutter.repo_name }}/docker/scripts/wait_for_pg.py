@@ -1,7 +1,7 @@
-#!/usr/bin/env -S uv run --no-progress
+#!/usr/bin/env -S uv run --no-progress --script
 # /// script
-# requires-python = "~=3.13.6"
-# dependencies = ["sqlalchemy[postgresql-asyncpg]~=2.0.41"]
+# requires-python = "~={{ cookiecutter.python_version }}"
+# dependencies = ["sqlalchemy[postgresql-asyncpg]~=2.1.8"]
 # ///
 
 # pylint: disable=broad-exception-caught
@@ -45,7 +45,7 @@ async def wait_for_db(engine: AsyncEngine, retries: int, delay: float) -> bool:
             logger.info("Database is ready")
             return True
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Database not ready (attempt %d/%d): %r", attempt, retries, exc
             )
@@ -57,13 +57,13 @@ async def wait_for_db(engine: AsyncEngine, retries: int, delay: float) -> bool:
 
 async def main() -> int:
     if not DB_URL:
-        logger.error("%s environment variable is not set", DB_URL_VARNAME)
+        logger.error("`%s` environment variable is not set", DB_URL_VARNAME)
         return 1
 
     try:
         url = make_url(DB_URL)
     except ArgumentError as exc:
-        logger.error("Invalid %s: %r", DB_URL_VARNAME, exc)
+        logger.error("Invalid `%s`: %r", DB_URL_VARNAME, exc)
         return 1
 
     safe_url = url.render_as_string(hide_password=True)
