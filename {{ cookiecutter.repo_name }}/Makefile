@@ -563,7 +563,7 @@ docker-compose: env-check-docker
 	@$(DOCKER_COMPOSE_EXPORTS) ; \
 	{ \
 		$(DOCKER_COMPOSE) --file "$(DOCKER_COMPOSE_FILE)" up --build ; \
-		$(DOCKER_COMPOSE) --file "$(DOCKER_COMPOSE_FILE)" down ; \
+		$(DOCKER_COMPOSE) --file "$(DOCKER_COMPOSE_FILE)" down --volumes ; \
 	}
 
 .PHONY: docker-logs
