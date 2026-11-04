@@ -61,11 +61,11 @@ GIT = git
 ##
 # Functions
 
-which_helper = $(shell \
-	[[ -n "$(shell which ${1} 2>/dev/null)" ]] \
-		|| echo "echo ERROR: Can\'t find the command: ${1} && \
-		exit ${ERROR_ENVIRONMENT}" \
-)
+error_helper = { echo "ERROR: ${1}" ; exit ${ERROR_ENVIRONMENT} ; }
+
+# Finds a command on PATH or, as the launcher ($2) resolves it.
+which_helper = ${2} which ${1} >/dev/null \
+	|| $(call error_helper,"Can\'t find the command: ${1}")
 
 version_helper = $(shell ${1} --version \
 	| ${GREP} -o "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*")
@@ -83,7 +83,7 @@ UV_CACHE_DIR ?=
 ifeq ($(shell which ${UV}),)
 	_install_hints_python += \
 		Install uv: https://docs.astral.sh/uv/getting-started/installation/
-	UV_CACHE_DIR = "$(HOME)/.cache/uv"
+	UV_CACHE_DIR = $(HOME)/.cache/uv
 endif
 
 VIRTUALENV = $(if \
@@ -97,10 +97,16 @@ UV_CMD_OPTS = \
 UV_BUILD_OPTS = \
 	--verify-hashes
 
+UV_RUN = $(UV) run $(UV_CMD_OPTS) --locked
+UV_RUN_NO_SYNC = $(UV) run $(UV_CMD_OPTS) --no-sync
+
+UV_PIP_OPTS = \
+	$(UV_CMD_OPTS) \
+	--python="$(VIRTUALENV)"
 UV_PIP_LIST_FORMAT ?= freeze
 UV_PIP_LIST_OPTS = \
 	--format="$(UV_PIP_LIST_FORMAT)"
-UV_PIP_LIST = $(UV) pip list $(UV_CMD_OPTS) $(UV_PIP_LIST_OPTS)
+UV_PIP_LIST = $(UV) pip list $(UV_PIP_OPTS) $(UV_PIP_LIST_OPTS)
 
 UV_LOCK_EXTRA_OPTS ?=
 UV_SYNC_EXTRA_OPTS ?=
@@ -110,6 +116,8 @@ INSTALL_EXTRAS ?=
 ifdef INSTALL_EXTRAS
 	UV_SYNC_OPT_DEPS = $(foreach extra,${INSTALL_EXTRAS}, --extra=${extra})
 endif
+
+which_uv_helper = $(call which_helper,${1},${UV_RUN_NO_SYNC})
 
 define outdated_helper
 	@set -o pipefail ; \
@@ -234,7 +242,7 @@ endef
 define pytest_helper
 	@path="$(testdir)/$(1)" ; \
 	if [[ -n "$(PYTEST_CUSTOM_PATH)" ]]; then path+="/$(PYTEST_CUSTOM_PATH)" ; fi ; \
-		$(2) ; $(PYTEST) $(PYTEST_EXTRA_OPTS) $(PYTEST_OPTS) "$${path}"
+		$(2) ; $(UV_RUN) $(PYTEST) $(PYTEST_EXTRA_OPTS) $(PYTEST_OPTS) "$${path}"
 endef
 
 
@@ -259,10 +267,9 @@ endif
 .PHONY: env-check-python
 # target: env-check-python - Check the requirements for Python
 env-check-python:
-ifeq ($(wildcard ${PYTHON_VERSION_FILE}),)
-	$(error The Python version must be set explicitly in the file \
-		`${PYTHON_VERSION_FILE}`)
-endif
+	@[[ -f "$(PYTHON_VERSION_FILE)" ]] \
+		|| $(call error_helper,The Python version must be set explicitly in the file \
+			\`$(PYTHON_VERSION_FILE)\`)
 ifdef _install_hints_python
 	$(info ${_install_hints_python})
 endif
@@ -277,17 +284,16 @@ endif
 .PHONY: env-check-venv
 # target: env-check-venv - Ensure the virtual environment exists
 env-check-venv:
-ifeq ($(wildcard ${VIRTUALENV}),)
-	$(error The virtual environment is missing at the target path: \
-		`${VIRTUALENV}`)
-endif
+	@[[ -d "$(VIRTUALENV)" ]] \
+		|| $(call error_helper,The virtual environment is missing at the target path: \
+			\`$(VIRTUALENV)\`)
 
 .PHONY: env-check-lockfile
 # target: env-check-lockfile - Ensure the lockfile exists
 env-check-lockfile:
-ifeq ($(wildcard ${UV_LOCKFILE}),)
-	$(error The project lockfile does not exist: `${UV_LOCKFILE}`)
-endif
+	@[[ -f "$(UV_LOCKFILE)" ]] \
+		|| $(call error_helper,The project lockfile does not exist: \
+			\`$(UV_LOCKFILE)\`)
 	$(info Requires the project lockfile (`uv.lock`). If the lockfile is \
 		out of date, the target either exits with an error or ignores the \
 		unlocked dependency changes; run `make requirements` to update it \
@@ -374,13 +380,13 @@ endif
 
 .PHONY: env-check-qa
 # target: env-check-qa - Check the requirements for the quality assurance tools
-env-check-qa: env-check-python
-	@$(call which_helper,${DEPTRY})
-	@$(call which_helper,${RUFF})
-	@$(call which_helper,${TY})
-	@$(call which_helper,${MYPY})
-	@$(call which_helper,${PYLINT})
-	@$(call which_helper,${PYTEST})
+env-check-qa: env-check-python env-check-venv env-check-lockfile
+	@$(call which_uv_helper,${DEPTRY})
+	@$(call which_uv_helper,${RUFF})
+	@$(call which_uv_helper,${TY})
+	@$(call which_uv_helper,${MYPY})
+	@$(call which_uv_helper,${PYLINT})
+	@$(call which_uv_helper,${PYTEST})
 
 .PHONY: env-show-qa
 # target: env-show-qa - Display the environment variables used to configure the quality assurance tools
@@ -436,10 +442,9 @@ endif
 .PHONY: venv
 # target: venv - Create a virtual environment
 venv: env-check-python
-ifneq ($(wildcard ${VIRTUALENV}),)
-	$(error A virtual environment already exists at the target path: \
-		`${VIRTUALENV}`)
-endif
+	@[[ ! -d "$(VIRTUALENV)" ]] \
+		|| $(call error_helper,A virtual environment already exists at the target path: \
+			\`$(VIRTUALENV)\`)
 	@$(UV) venv $(UV_CMD_OPTS) --seed "$(VIRTUALENV)"
 
 .PHONY: requirements
@@ -472,7 +477,7 @@ requirements-bump: env-check env-check-python env-check-lockfile
 
 .PHONY: requirements-up
 # target: requirements-up - Upgrade packages, ignoring pinned versions
-requirements-up:
+requirements-up: env-check-venv
 	@$(MAKE) requirements UV_LOCK_EXTRA_OPTS="--upgrade"
 	@$(MAKE) install
 
@@ -491,7 +496,7 @@ requirements-check: env-check-python env-check-venv
 	@$(UV_PIP_LIST) --editable --strict
 
 	@echo -e "\nOutdated packages:"
-	@$(UV) pip list $(UV_CMD_OPTS) --outdated
+	@$(UV) pip list $(UV_PIP_OPTS) --outdated
 
 .PHONY: requirements-tree
 # target: requirements-tree - Display the project's dependency tree
@@ -610,7 +615,7 @@ show-notes-recent: env-check
 .PHONY: check-deps
 # target: check-deps - Find unused, missing, and transitive dependencies
 check-deps: env-check-qa
-	@(cd "$(CURDIR)" && $(DEPTRY) \
+	@(cd "$(CURDIR)" && $(UV_RUN) $(DEPTRY) \
 		"$(srcdir)" \
 		"$(testdir)" \
 	)
@@ -618,22 +623,22 @@ check-deps: env-check-qa
 .PHONY: check-ruff
 # target: check-ruff - Lint with Ruff
 check-ruff: env-check-qa
-	@$(RUFF) check "$(srcdir)" "$(testdir)" "$(scriptdir)"
+	@$(UV_RUN) $(RUFF) check "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: check-ty
 # target: check-ty - Perform static type checking with ty
 check-ty: env-check-qa
-	@$(TY) check --project="$(CURDIR)"
+	@$(UV_RUN) $(TY) check --project="$(CURDIR)"
 
 .PHONY: check-mypy
 # target: check-mypy - Perform static type checking with Mypy
 check-mypy: env-check-qa
-	@$(MYPY) $(MYPY_OPTS) "$(srcdir)" "$(testdir)" "$(scriptdir)"
+	@$(UV_RUN) $(MYPY) $(MYPY_OPTS) "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: check-pylint
 # target: check-pylint - Perform code analysis with Pylint
 check-pylint: env-check-qa
-	@$(PYLINT) $(PYLINT_OPTS) "$(srcdir)" "$(testdir)" "$(scriptdir)"
+	@$(UV_RUN) $(PYLINT) $(PYLINT_OPTS) "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: lint
 # target: lint - Run all available code analysis tools
@@ -642,13 +647,13 @@ lint: check-ruff check-ty check-mypy check-pylint
 .PHONY: check-format
 # target: check-format - Detect unformatted files
 check-format: env-check-qa
-	@$(RUFF) format --check "$(srcdir)" "$(testdir)" "$(scriptdir)"
+	@$(UV_RUN) $(RUFF) format --check "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: format
 # target: format - Format all discovered Python files
 format: env-check-qa
-	@$(RUFF) check --select I --fix "$(srcdir)" "$(testdir)" "$(scriptdir)"
-	@$(RUFF) format "$(srcdir)" "$(testdir)" "$(scriptdir)"
+	@$(UV_RUN) $(RUFF) check --select I --fix "$(srcdir)" "$(testdir)" "$(scriptdir)"
+	@$(UV_RUN) $(RUFF) format "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: test
 # target: test - Run tests
@@ -678,7 +683,7 @@ help: env-check
 
 .PHONY: clean
 # target: clean - Clean the project's directory
-clean: env-check
+clean:
 	@find "$(CURDIR)" \
 		-name ".mypy_cache" -type d -exec rm -vrf {} + -o \
 		-name ".pytest_cache" -type d -exec rm -vrf {} + -o \
@@ -688,7 +693,7 @@ clean: env-check
 
 .PHONY: distclean
 # target: distclean - Clean the project's build output
-distclean: env-check
+distclean:
 	@find "$(CURDIR)" \
 		-path "$(VIRTUALENV)" -prune -o \
 		-name "*.dist-info" -type d -exec rm -vrf {} + -o \
@@ -700,7 +705,7 @@ distclean: env-check
 
 .PHONY: mostlyclean
 # target: mostlyclean - Delete almost everything
-mostlyclean: env-check clean distclean
+mostlyclean: clean distclean
 	@find "$(CURDIR)" -name .DS_Store -exec rm -vf {} +
 	@if [[ -n "$(UV_CACHE_DIR)" ]]; then \
 		rm -vrf "$(UV_CACHE_DIR)"; \

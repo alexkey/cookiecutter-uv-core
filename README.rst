@@ -96,8 +96,9 @@ project::
     make venv
     make install
 
-Optionally, activate the environment with the project's ``venv`` helper to run
-the commands that follow directly::
+The ``make`` targets below do not need an activated environment. To run the
+project's own commands directly, optionally activate it with the project's
+``venv`` helper::
 
     . ./venv
 
@@ -221,8 +222,7 @@ commands:
 * Display the environment variables used to configure Docker:
   ``make env-show-docker``.
 
-* Check the requirements for quality assurance tools: ``make env-check-qa``
-  (run this check from within the virtual environment at a later stage).
+* Check the requirements for quality assurance tools: ``make env-check-qa``.
 
 * Display the environment variables used to configure the quality assurance
   tools: ``make env-show-qa``.
@@ -330,6 +330,10 @@ lint, format, and test the codebase:
   ``PYLINT_OPTS`` variables and the ``ruff.toml``, ``ty.toml``, ``mypy.ini``,
   ``pytest.ini``, and ``pylintrc`` files. The analysis and formatting targets
   check ``src``, ``tests``, and ``etc/scripts``.
+
+  The dependency, analysis, formatting, and test targets run their tools
+  through ``uv run --locked``, at the versions in ``uv.lock``. They require the
+  virtual environment, the lockfile, and the installed tools.
 
 * Manage code formatting:
 
