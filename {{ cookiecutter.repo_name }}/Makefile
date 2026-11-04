@@ -180,6 +180,7 @@ NOTES_EXCLUDE_FILTER = \
 
 DEPTRY = deptry
 RUFF = ruff
+TY = ty
 MYPY = mypy
 MYPY_OPTS = \
 	--install-types
@@ -376,6 +377,7 @@ endif
 env-check-qa: env-check-python
 	@$(call which_helper,${DEPTRY})
 	@$(call which_helper,${RUFF})
+	@$(call which_helper,${TY})
 	@$(call which_helper,${MYPY})
 	@$(call which_helper,${PYLINT})
 	@$(call which_helper,${PYTEST})
@@ -618,6 +620,11 @@ check-deps: env-check-qa
 check-ruff: env-check-qa
 	@$(RUFF) check "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
+.PHONY: check-ty
+# target: check-ty - Perform static type checking with ty
+check-ty: env-check-qa
+	@$(TY) check --project="$(CURDIR)"
+
 .PHONY: check-mypy
 # target: check-mypy - Perform static type checking with Mypy
 check-mypy: env-check-qa
@@ -630,7 +637,7 @@ check-pylint: env-check-qa
 
 .PHONY: lint
 # target: lint - Run all available code analysis tools
-lint: check-ruff check-mypy check-pylint
+lint: check-ruff check-ty check-mypy check-pylint
 
 .PHONY: check-format
 # target: check-format - Detect unformatted files

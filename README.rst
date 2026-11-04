@@ -96,8 +96,8 @@ project::
     make venv
     make install
 
-Optionally, activate the environment with the project's ``venv`` helper so the
-commands that follow can be run directly::
+Optionally, activate the environment with the project's ``venv`` helper to run
+the commands that follow directly::
 
     . ./venv
 
@@ -113,8 +113,7 @@ Check formatting, run the linters, and run the unit tests::
 
 Build the image and bring up the service stack with Compose. The
 ``make docker-compose`` target runs in the foreground and tears the stack down
-on exit, so run the commands that follow from a second shell while it stays
-up::
+on exit; run the commands that follow from a second shell while it stays up::
 
     make docker-build
     make docker-compose
@@ -186,10 +185,11 @@ Ensure the following tools are available on your system:
 * Docker Desktop (on macOS), or Docker Engine with QEMU installed [#docker]_.
 
 The following tools will be installed as project developer dependencies
-(automatically during the creation of the virtual environment):
+(automatically when the project is installed with ``make install``):
 
 * Deptry_;
 * Ruff_;
+* ty_;
 * Mypy_;
 * Pylint_;
 * Pytest_.
@@ -229,6 +229,7 @@ commands:
 
 .. _Deptry: https://deptry.com/
 .. _Ruff: https://docs.astral.sh/ruff/
+.. _ty: https://docs.astral.sh/ty/
 .. _Mypy: https://mypy-lang.org/
 .. _Pylint: https://pylint.readthedocs.io/en/latest/
 .. _Pytest: https://docs.pytest.org/en/stable/
@@ -320,13 +321,15 @@ lint, format, and test the codebase:
 * Analyze the code:
 
   - Lint with *Ruff*: ``make check-ruff``;
+  - Perform static type checking with *ty*: ``make check-ty``;
   - Perform static type checking with *Mypy*: ``make check-mypy``;
   - Perform code analysis with *Pylint*: ``make check-pylint``;
   - Run all of the above analysis tools at once: ``make lint``.
 
   The quality assurance tools are configured by the ``MYPY_OPTS`` and
-  ``PYLINT_OPTS`` variables and the ``mypy.ini``, ``pytest.ini``, and
-  ``pylintrc`` files.
+  ``PYLINT_OPTS`` variables and the ``ruff.toml``, ``ty.toml``, ``mypy.ini``,
+  ``pytest.ini``, and ``pylintrc`` files. The analysis and formatting targets
+  check ``src``, ``tests``, and ``etc/scripts``.
 
 * Manage code formatting:
 
@@ -485,7 +488,7 @@ back automatically::
   to ``create_engine()`` and ``create_sessionmaker()``.
 
   - Sessions set ``expire_on_commit=False``. With the default ``True``,
-    attributes are expired after ``commit()``, so the first subsequent access
+    attributes are expired after ``commit()``, and the first subsequent access
     to each attribute triggers an implicit refresh SELECT. Under asyncio, that
     implicit I/O can occur outside *SQLAlchemy*'s async bridge and raise
     ``MissingGreenlet``. The tradeoff is that post-commit objects are not
@@ -536,7 +539,7 @@ body and holds them for its duration:
   shared ``AppState``.
 
 * On exit, it disposes the engine, whether the body returned normally or
-  raised, so pooled connections are released on every path.
+  raised, which releases pooled connections on every path.
 
 * ``AppState`` is a typed mapping of the resources the lifespan provides to the
   command body; it carries the session factory, and further process-wide
@@ -546,7 +549,7 @@ body and holds them for its duration:
   ``EXIT_GENERAL_ERROR`` instead of yielding a half-initialized state.
 
 This follows the database guidance above (create the engine and session
-factory once, then dispose them once), so a command opens sessions from the
+factory once, then dispose them once): a command opens sessions from the
 supplied factory and never manages the engine itself.
 
 Creating commands and lazy loading
@@ -561,7 +564,7 @@ startup cheap:
 * The group's ``--help`` and ``--version`` respond without importing any
   command.
 
-* Invoking one command never imports another, so a command pays for its
+* Invoking one command never imports another: a command pays for its
   dependencies only when it runs.
 
 Creating a command therefore takes two steps. First, place a module exposing
@@ -648,8 +651,7 @@ markers, applied in test code as ``@pytest.mark.slow`` and
 carrying it:
 
 * ``slow`` marks tests that are expensive to run; pass ``--skip-slow`` to skip
-  them. No test currently carries this marker, so ``--skip-slow`` has no effect
-  yet.
+  them. The option has no effect until a test carries this marker.
 
 * ``requires_db`` marks tests that need a live database; pass ``--skip-db`` to
   skip them. This marker is used only by tests in ``tests/system``; therefore,

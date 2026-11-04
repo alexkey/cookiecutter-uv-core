@@ -62,7 +62,7 @@ class TestCheckLogLevel:
     @pytest.mark.parametrize("value", [None, 1.5, [], (), object()])
     def test_rejects_unsupported_type(self, value: object) -> None:
         with pytest.raises(TypeError, match="must be string or integer"):
-            check_log_level(value)  # type: ignore[arg-type]
+            check_log_level(value)  # type: ignore[arg-type, ty:invalid-argument-type]
 
 
 class TestIsLevelEnabled:
@@ -117,7 +117,9 @@ class TestOrderedKeysProcessor:
     @pytest.mark.parametrize("bad_order", [["a", "b"], {"a", "b"}, "ab", None])
     def test_init_requires_tuple(self, bad_order: object) -> None:
         with pytest.raises(AssertionError):
-            OrderedKeysProcessor(bad_order)  # type: ignore[arg-type]
+            OrderedKeysProcessor(
+                bad_order  # type: ignore[arg-type, ty:invalid-argument-type]
+            )
 
     def test_orders_known_keys_then_appends_rest(self) -> None:
         processor = OrderedKeysProcessor(("timestamp", "level", "event"))
@@ -313,7 +315,10 @@ class TestSetupLogging:
     @pytest.mark.parametrize("bad_level", ["nope", -1, True])
     def test_rejects_invalid_level(self, bad_level: str | int) -> None:
         with pytest.raises((ValueError, TypeError)):
-            setup_logging(bad_level, "json")  # type: ignore[arg-type]
+            setup_logging(
+                bad_level,  # type: ignore[arg-type, ty:invalid-argument-type]
+                "json",
+            )
 
     def test_rejects_invalid_format(self) -> None:
         stream = io.StringIO()
