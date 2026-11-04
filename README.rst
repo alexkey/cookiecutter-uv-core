@@ -88,10 +88,11 @@ A Typical Session
 The following outlines a typical first session with the generated
 ``foobar_baz`` sample project, from environment setup to a running service.
 
-Lock the dependencies, create the virtual environment, and install the
-project::
+Initialize a Git work tree, then lock the dependencies, create the virtual
+environment, and install the project::
 
     cd foobar_baz
+    git init
     make requirements
     make venv
     make install
@@ -104,7 +105,7 @@ project's own commands directly, optionally activate it with the project's
 
 Because the project is managed with *uv*, this is not required: any command can
 instead be run within the project environment by prefixing it with ``uv run``,
-such as ``uv run make test`` or ``uv run foobar-baz run``.
+such as ``uv run foobar-baz run``.
 
 Check formatting, run the linters, and run the unit tests::
 
@@ -208,6 +209,8 @@ commands:
 
 * Check the primary tools by running: ``make env-check``.
 
+* Check the Git command and work tree: ``make env-check-git``.
+
 * Check Python-specific requirements:
 
   - General requirements: ``make env-check-python``;
@@ -308,7 +311,7 @@ The project provides a set of targets to inspect notes, analyze dependencies,
 lint, format, and test the codebase:
 
 * List source code notes, showing ``NOTES_CONTEXT`` lines of surrounding
-  context:
+  context (both targets require a Git work tree):
 
   - List all notes, sorted by tag: ``make show-notes``;
   - List notes from the most recent commits and modified files, scanning the

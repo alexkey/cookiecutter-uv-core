@@ -228,14 +228,21 @@ define PYTEST_EXPORTS
 endef
 
 define show_notes_helper
-	@for tag in $(PACKAGE_NOTES); do \
+	@files="$$( \
+		${1} \
+		| sort -u \
+		| ${SED} '${NOTES_EXCLUDE_FILTER}' \
+	)" ; \
+	if [[ -z "$${files}" ]]; then \
+		echo "No files to search for notes" ; \
+		exit 0 ; \
+	fi ; \
+	set -f ; IFS=$$'\n' ; \
+	for tag in $(PACKAGE_NOTES); do \
 		echo -e "\n#---\n# $${tag}\n#---\n" ; \
-		$(GREP) $(GREP_OPTS) --context=$(NOTES_CONTEXT) "\b$${tag}(\([^)]*\))?:" $$( \
-			${1} \
-			| sort -u \
-			| ${SED} '${NOTES_EXCLUDE_FILTER}' \
-		) \
-		|| echo "Tag $${tag} not found" ; \
+		$(GREP) $(GREP_OPTS) --context=$(NOTES_CONTEXT) \
+			"\b$${tag}(\([^)]*\))?:" \
+		$${files} || echo "Tag $${tag} not found" ; \
 	done
 endef
 
@@ -262,7 +269,12 @@ ifdef _install_hints
 endif
 	@$(call which_helper,${SED})
 	@$(call which_helper,${GREP})
+
+.PHONY: env-check-git
+# target: env-check-git - Check the requirements for Git
+env-check-git:
 	@$(call which_helper,${GIT})
+	@${GIT} rev-parse --show-toplevel >/dev/null
 
 .PHONY: env-check-python
 # target: env-check-python - Check the requirements for Python
@@ -294,9 +306,9 @@ env-check-lockfile:
 	@[[ -f "$(UV_LOCKFILE)" ]] \
 		|| $(call error_helper,The project lockfile does not exist: \
 			\`$(UV_LOCKFILE)\`)
-	$(info Requires the project lockfile (`uv.lock`). If the lockfile is \
-		out of date, the target either exits with an error or ignores the \
-		unlocked dependency changes; run `make requirements` to update it \
+	$(info Requires the project lockfile (`uv.lock`). If the lockfile is out of date, \
+		the target either exits with an error or ignores the unlocked dependency \
+		changes; run `make requirements` to update it \
 	)
 
 .PHONY: env-show-python
@@ -315,10 +327,9 @@ ifdef UV_LOCK_EXTRA_OPTS
 	$(info UV_LOCK_EXTRA_OPTS -> `$(UV_LOCK_EXTRA_OPTS)`)
 else
 	$(info UV_LOCK_EXTRA_OPTS:)
-	$(info ${\t}Use "--upgrade" to allow package upgrades, ignoring pinned \
-		versions)
-	$(info ${\t}Use "--upgrade-package=<name>" to allow upgrades for the \
-		specified package)
+	$(info ${\t}Use "--upgrade" to allow package upgrades, ignoring pinned versions)
+	$(info ${\t}Use "--upgrade-package=<name>" to allow upgrades for the specified \
+		package)
 endif
 
 ifdef UV_SYNC_EXTRA_OPTS
@@ -326,10 +337,8 @@ ifdef UV_SYNC_EXTRA_OPTS
 else
 	$(info UV_SYNC_EXTRA_OPTS:)
 	$(info ${\t}Use "--all-extras" to include all optional dependencies)
-	$(info ${\t}Use "--inexact" to keep extraneous packages present in the \
-		environment)
-	$(info ${\t}Use "--reinstall" to refresh all cached data and reinstall \
-		all packages)
+	$(info ${\t}Use "--inexact" to keep extraneous packages present in the environment)
+	$(info ${\t}Use "--reinstall" to refresh all cached data and reinstall all packages)
 endif
 
 ifdef UV_BUILD_EXTRA_OPTS
@@ -420,9 +429,8 @@ endif
 ifdef PYTEST_CUSTOM_PATH
 	$(info PYTEST_CUSTOM_PATH -> `$(PYTEST_CUSTOM_PATH)`)
 else
-	$(info PYTEST_CUSTOM_PATH: Use "/path/to/test.py::TestClass::test_method" \
-		to run a single test `test_method` from the suite `TestClass` of \
-		`test.py`)
+	$(info PYTEST_CUSTOM_PATH: Use "/path/to/test.py::TestClass::test_method" to run a \
+		single test `test_method` from the suite `TestClass` of `test.py`)
 endif
 
 ifdef PYTEST_DEPLOYMENT
@@ -595,14 +603,14 @@ docker-clean: env-check-docker
 
 .PHONY: show-notes
 # target: show-notes - List notes sorted by tag
-show-notes: env-check
+show-notes: env-check env-check-git
 	$(call show_notes_helper, \
 		${GIT} ls-files --cached --others --exclude-standard \
 	)
 
 .PHONY: show-notes-recent
 # target: show-notes-recent - List notes from the GIT_DEPTH most recent commits and modified files
-show-notes-recent: env-check
+show-notes-recent: env-check env-check-git
 	$(call show_notes_helper, \
 		{ \
 			${GIT} log --no-merges --name-only --pretty=format: -n $(GIT_DEPTH) \
