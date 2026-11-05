@@ -113,6 +113,6 @@ def cap_json_logs() -> Iterator[io.StringIO]:
         removes the handler installed here during teardown.
     """
     stream = io.StringIO()
-    setup_logging("debug", "json", log_stream=cast(TextIO, stream))
+    setup_logging("debug", "json", log_stream=stream)
 
     yield stream

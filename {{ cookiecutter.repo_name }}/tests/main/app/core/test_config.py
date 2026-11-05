@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from traceback import format_exception
 
 import pytest
 from pydantic import SecretStr, ValidationError
@@ -14,6 +15,7 @@ from {{ cookiecutter.repo_name }}.app.core.config import (
     check_database_url,
     get_settings,
 )
+from tests.utils import MALFORMED_PORT_DATABASE_URLS
 
 _PREFIX = "{{ cookiecutter.env_prefix }}"
 
@@ -69,6 +71,14 @@ class TestCheckDatabaseUrl:
     def test_rejects_unparseable_url(self) -> None:
         with pytest.raises(ValueError, match="invalid database URL"):
             check_database_url(SecretStr("not/a/valid/url"))
+
+    @pytest.mark.parametrize("url", MALFORMED_PORT_DATABASE_URLS)
+    def test_rejects_malformed_port_without_leaking_password(
+        self, url: str, database_password: str
+    ) -> None:
+        with pytest.raises(ValueError, match="invalid database URL") as excinfo:
+            check_database_url(SecretStr(url))
+        assert database_password not in "".join(format_exception(excinfo.value))
 
     @pytest.mark.parametrize(
         "driver",
@@ -144,6 +154,14 @@ class TestSettingsDefaults:
         with pytest.raises(ValidationError) as excinfo:
             Settings(DATABASE_URL=SecretStr(url), _env_file=None)
         assert secret_password not in str(excinfo.value)
+
+    @pytest.mark.parametrize("url", MALFORMED_PORT_DATABASE_URLS)
+    def test_does_not_leak_secret_from_malformed_port(
+        self, url: str, database_password: str
+    ) -> None:
+        with pytest.raises(ValidationError) as excinfo:
+            Settings(DATABASE_URL=SecretStr(url), _env_file=None)
+        assert database_password not in str(excinfo.value)
 
 
 class TestSettingsEnvironment:

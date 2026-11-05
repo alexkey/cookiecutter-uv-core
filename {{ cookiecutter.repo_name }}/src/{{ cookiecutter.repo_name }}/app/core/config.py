@@ -25,8 +25,9 @@ def check_database_url(value: SecretStr) -> SecretStr:
     _url = value.get_secret_value()
     try:
         url = sa_make_url(_url)
-    except ArgumentError as exc:
-        raise ValueError("invalid database URL") from exc
+    except ArgumentError, ValueError:
+        # The error for a malformed port quotes URL text that can include the password.
+        raise ValueError("invalid database URL") from None
 
     driver = url.drivername
     if driver != DATABASE_DRIVER:

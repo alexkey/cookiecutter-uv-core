@@ -760,7 +760,7 @@ async tests and fixtures require no decorators.
 
 ``tests/main/conftest.py`` (unit tests, ``make test``):
 
-* ``reset_logging_state`` - autouse; snapshots and restores process-wide
+* ``reset_logging_state`` - automatic; snapshots and restores process-wide
   logging state around every test to prevent configuration from leaking between
   tests.
 
@@ -786,10 +786,17 @@ async tests and fixtures require no decorators.
 
 ``tests/system/conftest.py`` (integration tests, ``make autotest``):
 
+* ``app_logging`` - session-scoped and automatic; configures logging as
+  the application does, which keeps local variables out of logged tracebacks.
+
 * ``database_url`` - session-scoped; resolves the real database URL from
   ``{{ cookiecutter.env_prefix }}DATABASE_URL``. It fails the suite when the
   URL is unset or invalid, or the database is unreachable; pass ``--skip-db``
-  to skip the suite instead.
+  to skip the suite instead. The URL is a ``SecretStr``, which keeps the
+  password masked in the function arguments *Pytest* prints in tracebacks; call
+  ``get_secret_value()`` only where a raw string is required. The masking does
+  not extend to the frames of *SQLAlchemy* and the database driver: do not pass
+  ``--tb=long``, ``--full-trace``, or ``--showlocals`` where logs are shared.
 
 * ``database_schema`` - session-scoped; creates a dedicated ``itest_<random>``
   schema for the run and drops it with ``CASCADE`` afterward.

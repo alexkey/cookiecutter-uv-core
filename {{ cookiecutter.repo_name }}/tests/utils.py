@@ -159,3 +159,8 @@ def _database_url(
 
 
 VALID_DATABASE_URL = _database_url()
+
+MALFORMED_PORT_DATABASE_URLS = (
+    f"{_DRIVER}://{_USER}:{_PASSWORD}/{_DATABASE}",  # <- `@` separator omitted
+    _database_url(password=f"p@ss:{_PASSWORD}"),     # <- unescaped `@` and `:` in the password
+)

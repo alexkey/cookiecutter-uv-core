@@ -204,8 +204,11 @@ def create_engine(
     """
     merged: AsyncEngineParams = {**DEFAULT_ASYNC_ENGINE_PARAMS, **params}
 
-    _url = url.get_secret_value() if isinstance(url, SecretStr) else url
     try:
+        # A `sqlalchemy.engine.URL` masks its password when printed, including in
+        # traceback arguments.
+        _url = make_url(url.get_secret_value() if isinstance(url, SecretStr) else url)
+
         engine = create_async_engine(_url, **merged)
     except SQLAlchemyError:
         logger.exception(

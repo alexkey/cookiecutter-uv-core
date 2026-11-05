@@ -223,9 +223,16 @@ def setup_logging(
             shared_processors.append(
                 structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False)
             )
+            _colors = _should_use_colors(stream, enable_colors=enable_colors)
             processors.append(
                 structlog.dev.ConsoleRenderer(
-                    colors=_should_use_colors(stream, enable_colors=enable_colors)
+                    colors=_colors,
+                    # Local variables can hold secrets.
+                    # An explicit formatter does not follow `colors` on its own.
+                    exception_formatter=structlog.dev.RichTracebackFormatter(
+                        color_system="truecolor" if _colors else None,
+                        show_locals=False,
+                    ),
                 )
             )
 

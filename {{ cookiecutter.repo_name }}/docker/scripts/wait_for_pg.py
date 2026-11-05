@@ -62,8 +62,9 @@ async def main() -> int:
 
     try:
         url = make_url(DB_URL)
-    except ArgumentError as exc:
-        logger.error("Invalid `%s`: %r", DB_URL_VARNAME, exc)
+    except ArgumentError, ValueError:
+        # The error for a malformed port quotes URL text that can include the password.
+        logger.error("Invalid `%s`", DB_URL_VARNAME)
         return 1
 
     safe_url = url.render_as_string(hide_password=True)

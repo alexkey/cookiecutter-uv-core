@@ -23,7 +23,7 @@ from {{ cookiecutter.repo_name }}.logging import (
     is_level_enabled,
     setup_logging,
 )
-from tests.utils import assert_log_event, parse_json_lines
+from tests.utils import _PASSWORD, assert_log_event, parse_json_lines
 
 
 def _find_app_handler() -> logging.Handler | None:
@@ -31,6 +31,13 @@ def _find_app_handler() -> logging.Handler | None:
         if handler.get_name() == _HANDLER_NAME:
             return handler
     return None
+
+
+def _log_exception(value: str = "") -> None:
+    try:
+        raise ValueError(len(value))
+    except ValueError:
+        get_logger("svc").exception("failed")
 
 
 class TestCheckLogLevel:
@@ -106,7 +113,7 @@ class TestIsLevelEnabled:
 
     def test_reflects_configured_level(self) -> None:
         stream = io.StringIO()
-        setup_logging("info", "json", log_stream=cast(TextIO, stream))
+        setup_logging("info", "json", log_stream=stream)
         logger = get_logger("svc")
         assert is_level_enabled(logger, level="debug") is False
         assert is_level_enabled(logger, level="info") is True
@@ -218,7 +225,7 @@ class TestShouldUseColors:
 class TestSetupLogging:
     def test_installs_single_named_handler_on_root(self) -> None:
         stream = io.StringIO()
-        setup_logging("info", "console", log_stream=cast(TextIO, stream))
+        setup_logging("info", "console", log_stream=stream)
         root = logging.getLogger()
         named = [h for h in root.handlers if h.get_name() == _HANDLER_NAME]
         assert len(named) == 1
@@ -238,7 +245,7 @@ class TestSetupLogging:
 
     def test_json_format_emits_structured_record(self) -> None:
         stream = io.StringIO()
-        setup_logging("debug", "json", log_stream=cast(TextIO, stream))
+        setup_logging("debug", "json", log_stream=stream)
         get_logger("svc").info("started", user_id=7)
         records = parse_json_lines(stream)
         assert len(records) == 1
@@ -253,14 +260,14 @@ class TestSetupLogging:
 
     def test_json_format_orders_leading_keys(self) -> None:
         stream = io.StringIO()
-        setup_logging("debug", "json", log_stream=cast(TextIO, stream))
+        setup_logging("debug", "json", log_stream=stream)
         get_logger("svc").warning("careful", detail="x")
         record = parse_json_lines(stream)[0]
         assert list(record)[:4] == ["timestamp", "logger", "level", "event"]
 
     def test_console_format_is_human_readable(self) -> None:
         stream = io.StringIO()
-        setup_logging("debug", "console", log_stream=cast(TextIO, stream))
+        setup_logging("debug", "console", log_stream=stream)
         get_logger("svc").info("hello world")
         output = stream.getvalue()
         assert "hello world" in output
@@ -270,18 +277,24 @@ class TestSetupLogging:
 
     def test_console_format_has_no_ansi_for_non_tty(self) -> None:
         stream = io.StringIO()
-        setup_logging(
-            "debug",
-            "console",
-            log_stream=cast(TextIO, stream),
-            enable_colors=True,
-        )
-        get_logger("svc").info("plain")
-        assert "\x1b[" not in stream.getvalue()
+        setup_logging("debug", "console", log_stream=stream, enable_colors=True)
+        _log_exception()
+        output = stream.getvalue()
+        assert "ValueError" in output
+        assert "\x1b[" not in output
+
+    @pytest.mark.parametrize("log_format", ["console", "json"])
+    def test_traceback_omits_local_variables(self, log_format: LogFormatT) -> None:
+        stream = io.StringIO()
+        setup_logging("debug", log_format, log_stream=stream)
+        _log_exception(_PASSWORD)
+        output = stream.getvalue()
+        assert "ValueError" in output
+        assert _PASSWORD not in output
 
     def test_respects_configured_level(self) -> None:
         stream = io.StringIO()
-        setup_logging("warning", "json", log_stream=cast(TextIO, stream))
+        setup_logging("warning", "json", log_stream=stream)
         logger = get_logger("svc")
         logger.debug("dropped")
         logger.info("also dropped")
@@ -291,7 +304,7 @@ class TestSetupLogging:
 
     def test_formats_foreign_stdlib_records(self) -> None:
         stream = io.StringIO()
-        setup_logging("debug", "json", log_stream=cast(TextIO, stream))
+        setup_logging("debug", "json", log_stream=stream)
         logging.getLogger("third_party").warning("from stdlib")
         assert_log_event(
             stream,
@@ -306,7 +319,7 @@ class TestSetupLogging:
         setup_logging(
             "debug",
             "json",
-            log_stream=cast(TextIO, stream),
+            log_stream=stream,
             cache_logger_on_first_use=True,
         )
         get_logger("svc").info("cached")
@@ -323,17 +336,13 @@ class TestSetupLogging:
     def test_rejects_invalid_format(self) -> None:
         stream = io.StringIO()
         with pytest.raises(ValueError, match="invalid log format"):
-            setup_logging(
-                "info",
-                cast(LogFormatT, "bogus"),
-                log_stream=cast(TextIO, stream),
-            )
+            setup_logging("info", cast(LogFormatT, "bogus"), log_stream=stream)
 
     def test_reconfiguration_replaces_handler(self) -> None:
         stream = io.StringIO()
-        setup_logging("debug", "json", log_stream=cast(TextIO, stream))
+        setup_logging("debug", "json", log_stream=stream)
         first = _find_app_handler()
-        setup_logging("error", "json", log_stream=cast(TextIO, stream))
+        setup_logging("error", "json", log_stream=stream)
         root = logging.getLogger()
         named = [h for h in root.handlers if h.get_name() == _HANDLER_NAME]
         assert len(named) == 1
@@ -346,7 +355,7 @@ class TestSetupLogging:
         sentinel_ = logging.NullHandler()
         root.addHandler(sentinel_)
         stream = io.StringIO()
-        setup_logging("info", "json", log_stream=cast(TextIO, stream))
+        setup_logging("info", "json", log_stream=stream)
         assert sentinel_ in root.handlers
 
     def test_force_remove_handlers_clears_existing(self) -> None:
@@ -354,12 +363,7 @@ class TestSetupLogging:
         sentinel_ = logging.NullHandler()
         root.addHandler(sentinel_)
         stream = io.StringIO()
-        setup_logging(
-            "info",
-            "json",
-            log_stream=cast(TextIO, stream),
-            force_remove_handlers=True,
-        )
+        setup_logging("info", "json", log_stream=stream, force_remove_handlers=True)
         assert sentinel_ not in root.handlers
         assert [h.get_name() for h in root.handlers] == [_HANDLER_NAME]
 
@@ -367,13 +371,13 @@ class TestSetupLogging:
 class TestGetLogger:
     def test_returns_configured_bound_logger(self) -> None:
         stream = io.StringIO()
-        setup_logging("debug", "json", log_stream=cast(TextIO, stream))
+        setup_logging("debug", "json", log_stream=stream)
         logger = get_logger("svc").bind()
         assert isinstance(logger, LoggerT)
 
     def test_logger_name_appears_in_output(self) -> None:
         stream = io.StringIO()
-        setup_logging("debug", "json", log_stream=cast(TextIO, stream))
+        setup_logging("debug", "json", log_stream=stream)
         get_logger("my.component").info("ping")
         assert_log_event(stream, "ping", logger="my.component")
 

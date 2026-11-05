@@ -17,6 +17,7 @@ from {{ cookiecutter.repo_name }}.app.db.database import (
     create_sessionmaker,
     dispose_engine,
 )
+from {{ cookiecutter.repo_name }}.logging import setup_logging
 from tests.utils import fail_without_traceback
 
 # Fixtures compose other fixtures by parameter name, which pylint reports as redefining
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterator
     from typing import Any
 
+    from pydantic import SecretStr
     from sqlalchemy.ext.asyncio import AsyncEngine
 
     from {{ cookiecutter.repo_name }}.app.db.database import SessionMakerT
@@ -37,7 +39,7 @@ _CONNECT_TIMEOUT = 5.0
 _SCHEMA_PREFIX = "itest"
 
 
-def _resolve_database_url() -> str | None:
+def _resolve_database_url() -> SecretStr | None:
     """Returns the configured database URL, or None if it is not set.
 
     Raises:
@@ -54,13 +56,15 @@ def _resolve_database_url() -> str | None:
             return None
         raise
 
-    return settings.DATABASE_URL.get_secret_value()  # pylint: disable=no-member
+    return settings.DATABASE_URL
 
 
 @asynccontextmanager
-async def _ephemeral_engine(url: str, **kwargs: Any) -> AsyncGenerator[AsyncEngine]:
+async def _ephemeral_engine(
+    url: SecretStr, **kwargs: Any
+) -> AsyncGenerator[AsyncEngine]:
     """Yields a single-use NullPool engine, disposed when the block exits."""
-    engine = create_async_engine(url, poolclass=NullPool, **kwargs)
+    engine = create_async_engine(url.get_secret_value(), poolclass=NullPool, **kwargs)
 
     try:
         yield engine
@@ -68,7 +72,7 @@ async def _ephemeral_engine(url: str, **kwargs: Any) -> AsyncGenerator[AsyncEngi
         await engine.dispose()
 
 
-def _check_connection(url: str) -> None:
+def _check_connection(url: SecretStr) -> None:
     """Raises the underlying error unless `url` can be connected to and queried."""
 
     async def _ping() -> None:
@@ -83,14 +87,20 @@ def _check_connection(url: str) -> None:
     asyncio.run(_ping())
 
 
-async def _run_ddl(url: str, statement: str) -> None:
+async def _run_ddl(url: SecretStr, statement: str) -> None:
     """Executes a single DDL statement."""
     async with _ephemeral_engine(url) as engine, engine.begin() as conn:
         await conn.execute(sa_text(statement))
 
 
+@pytest.fixture(scope="session", autouse=True)
+def app_logging() -> None:
+    """Configures logging as the application does."""
+    setup_logging("debug", "console")
+
+
 @pytest.fixture(scope="session")
-def database_url() -> str:
+def database_url() -> SecretStr:
     try:
         url = _resolve_database_url()
     except ValidationError as exc:
@@ -101,7 +111,8 @@ def database_url() -> str:
         )
         fail_without_traceback(f"invalid settings: {reasons}")
 
-    if not url:
+    # Explicit because an empty `SecretStr` evaluates to `False`.
+    if url is None:
         fail_without_traceback(
             f"{_DB_URL_VAR} is not set; pass --skip-db to skip these tests"
         )
@@ -115,7 +126,7 @@ def database_url() -> str:
 
 
 @pytest.fixture(scope="session")
-def database_schema(database_url: str) -> Iterator[str]:
+def database_schema(database_url: SecretStr) -> Iterator[str]:
     """A dedicated schema for the run, dropped with CASCADE afterward."""
     schema = f"{_SCHEMA_PREFIX}_{uuid4().hex[:8]}"
 
@@ -137,7 +148,7 @@ def database_schema(database_url: str) -> Iterator[str]:
 
 
 @pytest.fixture
-async def database_engine(database_url: str) -> AsyncIterator[AsyncEngine]:
+async def database_engine(database_url: SecretStr) -> AsyncIterator[AsyncEngine]:
     """A real engine bound to the configured database, disposed after the test."""
     engine = create_engine(database_url, raise_on_exc=True)
 
