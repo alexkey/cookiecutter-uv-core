@@ -1,7 +1,7 @@
 [project]
 name = "{{ cookiecutter.service_name }}"
 version = "{{ cookiecutter.version }}"
-# Dynamic versioning is currently disabled due to:
+# Dynamic versioning is disabled due to:
 # https://github.com/astral-sh/uv/issues/8714
 #
 # dynamic = ["version"]
@@ -75,11 +75,12 @@ namespace = false
 # patterns are included:
 source-include = []
 
-# The default exclusions (__pycache__, *.pyc, and *.pyo) are disabled when the
-# following are explicitly specified:
+# Files matching these patterns are removed from both distributions, in addition to the
+# default exclusions (__pycache__, *.pyc, and *.pyo):
 source-exclude = []
 
-# When building a wheel, all directories listed below are included.
+# The directories listed below are included in the source distribution and copied into
+# the `.data` directory of the wheel.
 # For details, see:
 # https://docs.astral.sh/uv/reference/settings/#build-backend_data
 data = []

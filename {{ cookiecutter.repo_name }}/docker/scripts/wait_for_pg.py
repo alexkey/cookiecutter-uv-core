@@ -6,7 +6,11 @@
 
 # pylint: disable=broad-exception-caught
 
-"""Wait for PostgreSQL database to become available."""
+"""Wait for the PostgreSQL database to accept connections.
+
+Exits with status 0 once the database responds, 1 if the URL is unset or invalid, and
+2 if every attempt fails.
+"""
 
 from __future__ import annotations
 
@@ -38,6 +42,7 @@ logger = logging.getLogger(Path(__file__).name)
 
 
 async def wait_for_db(engine: AsyncEngine, retries: int, delay: float) -> bool:
+    """Returns True once a probe query succeeds, or False after `retries` failures."""
     for attempt in range(1, retries + 1):
         try:
             async with engine.connect() as conn:

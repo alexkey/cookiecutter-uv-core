@@ -21,6 +21,8 @@ LoggerT = structlog.stdlib.BoundLogger
 
 
 class SupportsLevelCheck(Protocol):
+    """A logger that can report whether it is enabled for a numeric level."""
+
     def isEnabledFor(self, level: int, /) -> bool: ...  # pylint: disable=invalid-name
 
 
@@ -147,7 +149,8 @@ def setup_logging(
     The configured format is applied to records emitted through structlog and the
     standard library.
 
-    This function may be called multiple times to reconfigure logging.
+    Each call replaces the handler that a previous call installed; call the function
+    again to reconfigure logging.
 
     Args:
         log_level: Records below the `log_level` are dropped even when an individual
@@ -161,6 +164,9 @@ def setup_logging(
             logger before installing the new handler.
         cache_logger_on_first_use: If `True`, each logger is assembled only once, on
             first use, and cached for future calls.
+
+    Raises:
+        ValueError: If `log_level` or `log_format` is not recognized.
     """
     level = check_log_level(log_level)
 
@@ -174,7 +180,6 @@ def setup_logging(
         structlog.stdlib.PositionalArgumentsFormatter(),
         # Attach a stack dump to a log entry without involving an exception.
         structlog.processors.StackInfoRenderer(),
-        # Decode byte string values.
         structlog.processors.UnicodeDecoder(),
         structlog.processors.CallsiteParameterAdder(
             {
@@ -227,8 +232,8 @@ def setup_logging(
             processors.append(
                 structlog.dev.ConsoleRenderer(
                     colors=_colors,
-                    # Local variables can hold secrets.
-                    # An explicit formatter does not follow `colors` on its own.
+                    # Hide local variables, which can hold secrets. Set the color system
+                    # explicitly: this formatter does not inherit `colors`.
                     exception_formatter=structlog.dev.RichTracebackFormatter(
                         color_system="truecolor" if _colors else None,
                         show_locals=False,

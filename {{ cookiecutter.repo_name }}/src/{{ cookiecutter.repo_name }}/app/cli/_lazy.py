@@ -39,6 +39,11 @@ class LazyGroup(click.Group):
         return [*eager, *lazy]
 
     def _lazy_load(self, cmd_name: str) -> click.Command:
+        """Imports and returns the command registered under `cmd_name`.
+
+        Raises:
+            TypeError: If the registered dotted path does not name a `click.Command`.
+        """
         import_path = self.lazy_subcommands[cmd_name]
         module_name, _, object_name = import_path.rpartition(".")
 
@@ -52,6 +57,7 @@ class LazyGroup(click.Group):
         return command
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        """Resolves `cmd_name`, preferring a lazy subcommand over an eager one."""
         if cmd_name in self.lazy_subcommands:
             return self._lazy_load(cmd_name)
 

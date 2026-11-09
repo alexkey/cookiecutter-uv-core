@@ -40,6 +40,8 @@ SessionMakerT = async_sessionmaker[AsyncSession]
 
 
 class AsyncEngineParams(TypedDict, total=False):
+    """Engine options that `create_engine()` accepts as keyword overrides."""
+
     # If True, the Engine will log all statements as well as a repr() of their parameter
     # lists to the default log handler.
     echo: _EchoFlagType
@@ -64,14 +66,14 @@ class AsyncEngineParams(TypedDict, total=False):
     # To disable pooling, set poolclass to NullPool instead.
     poolclass: type[Pool] | None
 
-    # If True will test the pool connections for liveness upon each checkout.
+    # If True, test pool connections for liveness upon each checkout.
     pool_pre_ping: bool
 
     # Number of connections to keep open inside the connection pool.
     # With QueuePool, a pool_size setting of 0 indicates no limit.
     pool_size: int
 
-    # Number of seconds to recycle pool connections.
+    # Age in seconds after which a pooled connection is replaced on checkout.
     pool_recycle: int
 
     # Determine steps to take on connections as they are returned to the pool,
@@ -88,6 +90,8 @@ class AsyncEngineParams(TypedDict, total=False):
 
 
 class AsyncSessionParams(TypedDict, total=False):
+    """Session options that `create_sessionmaker()` accepts as keyword overrides."""
+
     # When True, all query operations will issue a Session.flush() call to this Session
     # before proceeding.
     autoflush: bool
@@ -103,7 +107,7 @@ class AsyncSessionParams(TypedDict, total=False):
     # When True, all transactions will be started as a "two phase" transaction.
     # This allows each database to roll back the entire transaction, before each
     # transaction is committed.
-    # Typically used when you have multiple binds in one logical transaction.
+    # Typically used with multiple binds in one logical transaction.
     twophase: bool
 
     # Determines if the session should reset itself after calling .close() or should
@@ -119,24 +123,25 @@ DEFAULT_ASYNC_ENGINE_PARAMS: AsyncEngineParams = {
     "poolclass": AsyncAdaptedQueuePool,
     "pool_pre_ping": True,
     "pool_size": 10,
-    # Set this below the PgBouncer/load balancer idle timeout when deploying behind one:
+    # Keep this below the shortest idle timeout of any PgBouncer, load balancer, or NAT
+    # in the connection path.
     "pool_recycle": 1800,
-    # Call rollback() on the connection, to release locks and transaction resources:
+    # Roll back on return to release locks and transaction resources.
     "pool_reset_on_return": "rollback",
     "pool_timeout": 30.0,
-    # Allows unused connections to time out naturally on the server side, which is
-    # beneficial in non-peak usage scenarios:
+    # Reuse the most recently returned connections, which lets surplus idle connections
+    # time out on the server during low traffic.
     "pool_use_lifo": True,
 }
 
 DEFAULT_ASYNC_SESSION_PARAMS: AsyncSessionParams = {
     "autoflush": True,
     "autobegin": True,
-    # Expiration should generally not be needed as Session.expire_on_commit should
-    # normally be set to False when using asyncio.
+    # An attribute expired on commit refreshes implicitly on next access, but under
+    # asyncio that I/O can run outside the async bridge and raise MissingGreenlet.
     #
-    # In async, avoid implicit I/O (lazy loads) where possible; prefer selectinload() or
-    # explicit `await session.refresh(obj, ["rel"])`.
+    # Load relationships with selectinload() and fetch server-generated values with
+    # `await session.refresh(obj, ["attr"])` instead.
     "expire_on_commit": False,
     "twophase": False,
     "close_resets_only": False,
@@ -234,7 +239,7 @@ async def dispose_engine(
 ) -> None:
     """Disposes a database engine, closing its pooled connections.
 
-    Disposal errors are logged and suppressed rather than propagated.
+    SQLAlchemy errors raised during disposal are logged and suppressed.
 
     Args:
         engine: Engine to dispose.
@@ -243,7 +248,7 @@ async def dispose_engine(
     assert engine, "Database engine instance must be provided"
     try:
         await engine.dispose(
-            # Close all currently checked in database connections:
+            # Close the connections checked in to the pool.
             close=True
         )
     except SQLAlchemyError:

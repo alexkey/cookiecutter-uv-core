@@ -19,6 +19,8 @@ __all__ = [
     "main",
 ]
 
+# Maps each subcommand name to the dotted path of its `click.Command`; `LazyGroup`
+# imports the module only when the command is resolved.
 _SUBCOMMANDS = MappingProxyType(
     {
         "run": "{{ cookiecutter.repo_name }}.app.cli.commands.run.run_cmd",
@@ -37,4 +39,5 @@ def cli() -> None:
 
 
 def main() -> Never:
+    """Runs the command-line interface."""
     cli.main()

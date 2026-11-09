@@ -63,7 +63,7 @@ GIT = git
 
 error_helper = { echo "ERROR: ${1}" ; exit ${ERROR_ENVIRONMENT} ; }
 
-# Finds a command on PATH or, as the launcher ($2) resolves it.
+# Fails unless command $1 is on PATH, resolved through launcher $2 when one is given.
 which_helper = ${2} which ${1} >/dev/null \
 	|| $(call error_helper,"Can\'t find the command: ${1}")
 
@@ -202,7 +202,6 @@ PYTEST_DURATIONS ?= 10
 PYTEST_LOG_CLI ?= false
 PYTEST_LOG_CLI_LEVEL ?= INFO
 
-# Live logging needs capture off.
 ifeq ($(PYTEST_LOG_CLI),true)
 	PYTEST_CAPTURE ?= no
 else
@@ -222,7 +221,8 @@ PYTEST_OPTS = \
 PYTEST_EXTRA_OPTS ?=
 PYTEST_CUSTOM_PATH ?=
 PYTEST_DEPLOYMENT ?= http://localhost:8000
-# Optionally add exports to be passed to Pytest HERE ==>
+# Shell commands that `make autotest` runs before Pytest, such as `export` statements
+# for the system tests; the default `:` is a no-op.
 define PYTEST_EXPORTS
 :
 endef
@@ -476,7 +476,7 @@ requirements-try: env-check-python env-check-lockfile
 	@$(MAKE) requirements UV_LOCK_EXTRA_OPTS="--upgrade --dry-run"
 
 .PHONY: requirements-bump
-# target: requirements-bump - Raise the `~=` and `>=` constraints of outdated packages to the latest versions
+# target: requirements-bump - Raise the `~=` and `>=` constraints of outdated direct dependencies to the latest versions
 requirements-bump: env-check env-check-python env-check-lockfile
 	$(call outdated_helper) \
 		| $(SED) -r 's/^\S+ ([^ []+).*\(latest: v(.+)\)$$/\1 \2/' \
@@ -571,7 +571,7 @@ endif
 	"$(DOCKER_IMAGE_NAME)"
 
 .PHONY: docker-compose
-# target: docker-compose - Create and start containers, start any linked services
+# target: docker-compose - Start the service stack and tear it down on exit
 docker-compose: env-check-docker
 	@$(DOCKER_COMPOSE_EXPORTS) ; \
 	{ \
@@ -586,7 +586,7 @@ docker-logs: env-check-docker
 		$(DOCKER_COMPOSE) --file "$(DOCKER_COMPOSE_FILE)" logs --follow
 
 .PHONY: docker-shell
-# target: docker-shell - Spawn a shell to the container
+# target: docker-shell - Open a shell in the running container
 docker-shell: env-check-docker
 	@$(DOCKER_COMPOSE_EXPORTS) ; $(DOCKER_COMPOSE) \
 		--file "$(DOCKER_COMPOSE_FILE)" \
@@ -658,18 +658,18 @@ check-format: env-check-qa
 	@$(UV_RUN) $(RUFF) format --check "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: format
-# target: format - Format all discovered Python files
+# target: format - Sort imports and format all discovered Python files
 format: env-check-qa
 	@$(UV_RUN) $(RUFF) check --select I --fix "$(srcdir)" "$(testdir)" "$(scriptdir)"
 	@$(UV_RUN) $(RUFF) format "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: test
-# target: test - Run tests
+# target: test - Run the unit tests
 test: env-check-qa
 	$(call pytest_helper,${PYTEST_UNIT_DIR},:)
 
 .PHONY: autotest
-# target: autotest - Run system tests for the specified deployment
+# target: autotest - Run the system tests
 autotest: env-check-qa
 ifndef PYTEST_DEPLOYMENT
 	$(error PYTEST_DEPLOYMENT: URL of the deployed service is required, e.g., \

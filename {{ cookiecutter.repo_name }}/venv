@@ -10,10 +10,10 @@ fi
 #---
 # Helper script to activate Python virtual environments
 #---
-# Searches for virtualenv in the following order:
-# * User-specified path (if </path/to/venv> were given).
-# * Docker environment path ({{ cookiecutter.docker_prefix }}).
-# * Local project path (.venv).
+# Searches for a virtual environment in the following order:
+# * The user-specified path, if </path/to/venv> is given.
+# * The Docker environment path ({{ cookiecutter.docker_prefix }}/.venv).
+# * The `.venv` directory in the current working directory.
 
 
 __activate_venv() {

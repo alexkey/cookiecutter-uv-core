@@ -46,7 +46,10 @@ def _isolate_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 def valid_environment(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, valid_database_url: str
 ) -> None:
-    """Supplies a valid database URL and an empty env file, isolated from `.env.local`."""
+    """Supplies a valid database URL and an empty environment file.
+
+    The empty file isolates the test from `.env.local`.
+    """
     empty_env_file = tmp_path / ".env.empty"
     empty_env_file.write_text("", encoding="utf-8")
 

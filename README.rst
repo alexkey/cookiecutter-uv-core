@@ -49,9 +49,8 @@ the default shown for each prompt:
   image tags.
 * ``postgres_user`` - the PostgreSQL user.
 
-The following values are derived automatically from the inputs above. You can
-usually accept their defaults unless you have a specific reason to override
-them:
+The following values are derived automatically from the inputs above. Accept
+their defaults unless you have a specific reason to override them:
 
 * ``service_name`` - the lowercased project name.
 * ``repo_name`` - the importable Python package name, with hyphens replaced by
@@ -294,7 +293,8 @@ manage Docker resources:
 
 * Manage the service stack with Compose:
 
-  - Build, start, then tear down the containers: ``make docker-compose``;
+  - Start the containers and tear them down on exit: ``make docker-compose``
+    (build the image first with ``make docker-build``);
   - Follow the logs from the running containers: ``make docker-logs``;
   - Open a shell in the running container: ``make docker-shell``.
 
@@ -351,9 +351,9 @@ lint, format, and test the codebase:
     ``tests``: ``make autotest``.
 
   ``make autotest`` reads ``PYTEST_DEPLOYMENT`` as its target deployment URL,
-  currently a stub. It also needs a reachable database: it fails unless
-  ``{{ cookiecutter.env_prefix }}DATABASE_URL`` is set and valid, or
-  ``PYTEST_EXTRA_OPTS`` passes ``--skip-db``.
+  which the shipped system tests do not use. It also needs a reachable
+  database: it fails unless ``{{ cookiecutter.env_prefix }}DATABASE_URL`` is
+  set and valid, or ``PYTEST_EXTRA_OPTS`` passes ``--skip-db``.
 
   Both targets also accept ``PYTEST_EXTRA_OPTS`` and ``PYTEST_CUSTOM_PATH`` to
   forward extra *Pytest* arguments and restrict the run to specific paths; see
@@ -392,20 +392,22 @@ and read through a cached accessor::
 
 * Settings are populated from environment variables that share the project's
   prefix, for example ``{{ cookiecutter.env_prefix }}LOG_LEVEL`` and
-  ``{{ cookiecutter.env_prefix }}DATABASE_URL``. Names are case-sensitive, and
-  variables that do not map to a defined setting are rejected.
+  ``{{ cookiecutter.env_prefix }}DATABASE_URL``. Names are case-sensitive.
+  Environment variables that do not map to a defined setting are ignored.
 
 * Values may also be supplied through an env file, ``.env.local`` by default;
   set ``{{ cookiecutter.env_prefix }}ENV_FILE`` to load a different path.
-  Process environment variables take precedence over the env file. See
+  Process environment variables take precedence over the environment file, and
+  environment file entries that do not map to a defined setting are rejected. See
   ``.env.local`` for the full set of supported variables.
 
 * ``get_settings()`` returns a cached singleton. Pass ``reload=True`` to
   discard the cache and rebuild it from the current environment.
 
 * ``DATABASE_URL`` is required and validated: it must use the
-  ``postgresql+asyncpg`` driver and include a host and a database name. It is
-  held as a ``SecretStr`` and masked when settings are logged or printed.
+  ``postgresql+asyncpg`` driver and include a database name and either a host
+  or a ``host`` query parameter naming a socket directory. It is held as a
+  ``SecretStr`` and masked when settings are logged or printed.
 
 Logging (``logging.py``)
 ------------------------
@@ -517,11 +519,11 @@ back automatically::
     was dropped while idle. ``pool_use_lifo`` keeps traffic on a smaller set of
     active connections, allowing excess connections to remain idle and be
     closed by the server during low-traffic periods. ``pool_recycle`` (1800
-    seconds) limits connection age and is a reasonable default when no
-    component in the network path closes connections sooner. If you are using
-    PgBouncer (600s default), a load balancer, or NAT (for example, an AWS NLB
-    with a 350s idle timeout), set it below the shortest idle timeout in the
-    path, typically around 300 seconds. While ``pool_pre_ping`` detects stale
+    seconds) limits connection age; keep this default only when no component
+    in the network path closes connections sooner. If you are using PgBouncer
+    (600s default), a load balancer, or NAT (for example, an AWS NLB with a
+    350s idle timeout), set it below the shortest idle timeout in the path,
+    such as 300 seconds. While ``pool_pre_ping`` detects stale
     connections when they are retrieved from the pool, ``pool_recycle`` helps
     avoid reaching that state in the first place.
 
@@ -551,7 +553,7 @@ body and holds them for its duration:
   raised, which releases pooled connections on every path.
 
 * ``AppState`` is a typed mapping of the resources the lifespan provides to the
-  command body; it carries the session factory, and further process-wide
+  command body; it carries the session factory, and further lifespan-owned
   resources are added by extending it.
 
 * When the engine cannot be created, the lifespan fails fast and exits with
@@ -626,8 +628,8 @@ stacked beneath ``@click.command`` in a specific order, as the example above
 shows:
 
 * ``configure`` resolves settings and configures logging before the body runs,
-  which guarantees that logging uses the effective configuration from the very
-  first record.
+  which guarantees that logging uses the effective configuration from the first
+  record.
 
 * ``announce`` logs the resolved settings at debug level, behind the same level
   guard recommended above, then a version banner at info level.
@@ -643,21 +645,20 @@ acquire the shared resources for the lifetime of the command.
 Testing
 -------
 
-Tests run under *Pytest*. As mentioned above, the ``make test`` and
-``make autotest`` targets run the project's tests::
+Tests run under *Pytest*. The ``make test`` and ``make autotest`` targets run
+the unit and system tests::
 
     make test
     make autotest
 
 ``PYTEST_DEPLOYMENT`` is dedicated to ``make autotest`` and is reserved for the
-deployed service URL that system tests will target (default
-``http://localhost:8000``). It is currently a stub: ``make autotest`` only
-echoes the value, and the shipped system tests do not consume it yet.
+URL of the deployed service that system tests target (default
+``http://localhost:8000``). ``make autotest`` echoes the value, and the shipped
+system tests do not read it.
 
-The shared ``{{ cookiecutter.repo_name }}/tests/conftest.py`` registers two
-markers, applied in test code as ``@pytest.mark.slow`` and
-``@pytest.mark.requires_db``, each paired with an option that skips the tests
-carrying it:
+The shared ``tests/conftest.py`` registers two markers, applied in test code as
+``@pytest.mark.slow`` and ``@pytest.mark.requires_db``, each paired with an
+option that skips the tests carrying it:
 
 * ``slow`` marks tests that are expensive to run; pass ``--skip-slow`` to skip
   them. The option has no effect until a test carries this marker.
@@ -690,8 +691,7 @@ Several Makefile variables customize any test run:
   records.
 
 * ``PYTEST_CAPTURE`` selects *Pytest*'s output capture mode (``--capture``); it
-  defaults to ``fd`` and is forced to ``no`` when ``PYTEST_LOG_CLI=true``,
-  since live logging requires capture to be off.
+  defaults to ``fd``, or to ``no`` when ``PYTEST_LOG_CLI=true``.
 
 For example::
 
@@ -748,8 +748,9 @@ Fixtures
 ^^^^^^^^
 
 Fixtures are defined in ``conftest.py`` files and apply to every test at or
-below their directory. With *pytest-asyncio* running in auto mode by default,
-async tests and fixtures require no decorators.
+below their directory. Because ``pytest.ini`` runs *pytest-asyncio* in auto
+mode, async tests need no ``@pytest.mark.asyncio`` marker, and async fixtures
+use the plain ``@pytest.fixture`` decorator.
 
 ``tests/conftest.py`` (whole suite):
 
@@ -778,11 +779,11 @@ async tests and fixtures require no decorators.
 
 ``tests/main/app/db/conftest.py`` (database unit tests):
 
-* ``make_fake_sessionmaker`` - returns the ``FakeSessionMaker`` class (with
-  ``FakeSession`` and ``FakeTransaction``), an in-memory async context manager
-  used by ``create_session()`` in tests; inspect the ``session`` and
-  ``transaction`` attributes to assert commit versus rollback without a live
-  database.
+* ``make_fake_sessionmaker`` - returns the ``FakeSessionMaker`` class. Pass an
+  instance to ``create_session()`` in place of a real session factory; its
+  ``session`` attribute holds a ``FakeSession`` whose ``transaction`` is a
+  ``FakeTransaction``. Inspect them to assert commit versus rollback without a
+  live database.
 
 ``tests/system/conftest.py`` (integration tests, ``make autotest``):
 

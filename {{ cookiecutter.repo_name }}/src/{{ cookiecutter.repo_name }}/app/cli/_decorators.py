@@ -47,7 +47,7 @@ def configure[**P, R](func: Callable[P, R]) -> Callable[P, R]:
 
 
 def announce[**P, R](func: Callable[P, R]) -> Callable[P, R]:
-    """Runs the startup announcement before a command body executes."""
+    """Logs the startup announcement before a command body runs."""
 
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:

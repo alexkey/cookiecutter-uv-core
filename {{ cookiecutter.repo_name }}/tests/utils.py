@@ -23,6 +23,12 @@ def fail_without_traceback(reason: str) -> Never:
 
 
 def parse_json_lines(stream: io.StringIO) -> list[LogRecord]:
+    """Parses captured JSON log lines into records, skipping blank lines.
+
+    Raises:
+        json.JSONDecodeError: If a line is not valid JSON.
+        AssertionError: If a line holds a JSON value other than an object.
+    """
     __tracebackhide__ = True  # pylint: disable=unused-variable
 
     records: list[LogRecord] = []
@@ -55,7 +61,7 @@ def assert_log_event(
 
     Raises:
         AssertionError: If the stream does not hold exactly `count` records matching
-        `match`, or a matching record's field does not equal its expected value.
+            `match`, or a matching record's field does not equal its expected value.
     """
     __tracebackhide__ = True  # pylint: disable=unused-variable
 
@@ -100,7 +106,7 @@ def assert_log_exception(
 
     Raises:
         AssertionError: If no single record matches, the record carries no `exception`,
-        or the chain lacks an entry of `exc_type`.
+            or the chain lacks an entry of `exc_type`.
     """
     __tracebackhide__ = True  # pylint: disable=unused-variable
 
@@ -147,6 +153,10 @@ def _database_url(
     database: str | None = _DATABASE,
     query: str = "",
 ) -> str:
+    """Builds a database URL from components, omitting each component set to None.
+
+    A None host also omits the port.
+    """
     if host is None:
         authority = ""
     else:

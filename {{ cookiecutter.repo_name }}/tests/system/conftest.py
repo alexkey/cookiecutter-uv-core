@@ -101,6 +101,11 @@ def app_logging() -> None:
 
 @pytest.fixture(scope="session")
 def database_url() -> SecretStr:
+    """The configured database URL, verified to accept connections.
+
+    Fails each requesting test without a traceback when the URL is unset or invalid, or
+    the database is unreachable.
+    """
     try:
         url = _resolve_database_url()
     except ValidationError as exc:
@@ -169,7 +174,7 @@ def database_sessionmaker(database_engine: AsyncEngine) -> SessionMakerT:
 async def items_table(
     database_engine: AsyncEngine, database_schema: str
 ) -> AsyncIterator[str]:
-    """Creates an isolated throwaway table in the run schema and drops it after."""
+    """Creates an isolated throwaway table in the run schema, dropped after the test."""
     table = f"{database_schema}.items"
 
     async with database_engine.begin() as conn:

@@ -29,12 +29,25 @@ EXIT_GENERAL_ERROR = 1
 
 
 class AppState(TypedDict, total=True):
+    """Resources owned by the enclosing `app_lifespan()` context.
+
+    Attributes:
+        session_maker: Session factory bound to the lifespan's database engine.
+    """
+
     session_maker: SessionMakerT
 
 
 @asynccontextmanager
 async def app_lifespan() -> AsyncGenerator[AppState]:
-    """Yields the shared application state for the duration of a command."""
+    """Yields the shared application state for the duration of a command.
+
+    Creates the database engine and session factory on entry, and disposes the engine on
+    exit whether the body returns or raises.
+
+    Raises:
+        SystemExit: With `EXIT_GENERAL_ERROR` if the database engine cannot be created.
+    """
     settings = get_settings()
     _verbose = settings.LOG_VERBOSE
 

@@ -22,6 +22,21 @@ DATABASE_DRIVER = "postgresql+asyncpg"
 
 
 def check_database_url(value: SecretStr) -> SecretStr:
+    """Validates a database URL for the SQLAlchemy driver.
+
+    Error messages never quote the URL, which can hold a password.
+
+    Args:
+        value: Database URL to validate.
+
+    Returns:
+        The input value unchanged.
+
+    Raises:
+        ValueError: If the URL cannot be parsed, uses a driver other than
+            `DATABASE_DRIVER`, has neither a host nor a socket directory, or lacks a
+            database name.
+    """
     _url = value.get_secret_value()
     try:
         url = sa_make_url(_url)
@@ -54,6 +69,15 @@ DatabaseURL = Annotated[SecretStr, AfterValidator(check_database_url)]
 
 
 class Settings(BaseSettings):
+    """Service settings read from environment variables and an environment file.
+
+    Each field reads the environment variable of the same name with the
+    `SettingsConfigDict["env_prefix"]` prefix. Environment variables take precedence
+    over the environment file.
+
+    Obtain instances through `get_settings()`, which caches them.
+    """
+
     ##
     # Logging
 
@@ -62,7 +86,7 @@ class Settings(BaseSettings):
         "console",
         description=f"Logging output format: {', '.join(get_args(LogFormatT))}",
     )
-    LOG_COLORS: bool = Field(True, description="Use colors for a nicer output")
+    LOG_COLORS: bool = Field(True, description="Colorize console output on a TTY")
     LOG_VERBOSE: bool = Field(False, description="Enable verbose logs")
 
     ##
@@ -73,9 +97,10 @@ class Settings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(
-        # Whether to hide inputs when printing errors.
+        # Keep raw values out of validation errors.
         hide_input_in_errors=True,
-        # Forbid extra attributes during model initialization.
+        # Reject unknown initialization arguments and environment file entries. Unknown
+        # environment variables are ignored, not rejected.
         extra="forbid",
         # Whether environment and CLI variable names should be read with
         # case-sensitivity.
@@ -84,12 +109,14 @@ class Settings(BaseSettings):
         nested_model_default_partial_update=False,
         # Prefix for all environment variables.
         env_prefix="{{ cookiecutter.env_prefix }}",
-        # The env file(s) to load settings values from; None indicates that environment
-        # variables should not be loaded from an env file.
+        # Resolved at import time and used only when `Settings` is instantiated
+        # directly; `get_settings()` resolves the environment file on its first call and
+        # on reload.
         env_file=_resolve_env_file(),
-        # The env file encoding.
+        # The environment file encoding.
         env_file_encoding="utf-8",
-        # Ignore environment variables where the value is an empty string.
+        # Read an empty value as an empty string instead of falling back to the field
+        # default.
         env_ignore_empty=False,
         # The nested env values delimiter.
         env_nested_delimiter="__",
@@ -114,6 +141,10 @@ def get_settings(*, reload: bool = False) -> Settings:
     Args:
         reload: If `True`, discard the cached instance and rebuild it from the
             environment and env file before returning.
+
+    Raises:
+        pydantic.ValidationError: If a required setting is missing or a setting is
+            invalid.
     """
     if reload:
         _get_settings.cache_clear()
