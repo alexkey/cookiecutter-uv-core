@@ -53,7 +53,8 @@ def check_database_url(value: SecretStr) -> SecretStr:
     if not (url.host or url.query.get("host")):
         raise ValueError("database URL must include a host or socket directory")
 
-    if url.database is None:
+    # A URL that ends in a bare slash parses to an empty name rather than None.
+    if not url.database:
         raise ValueError("database URL must include a database name")
 
     return value

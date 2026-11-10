@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING, cast, get_origin
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy.engine import make_url
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.engine import URL, make_url
+from sqlalchemy.exc import NoSuchModuleError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Query
-from sqlalchemy.pool import AsyncAdaptedQueuePool
+from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool, StaticPool
 
 from {{ cookiecutter.repo_name }}.app.db import database
 from {{ cookiecutter.repo_name }}.app.db.database import (
@@ -35,6 +35,15 @@ if TYPE_CHECKING:
 
 _INVALID_DRIVER = "postgresql+nosuchdriver"
 
+_TRANSACTION_ERRORS = [
+    pytest.param(
+        SQLAlchemyError, "Database error during transaction", id="sqlalchemy-error"
+    ),
+    pytest.param(
+        RuntimeError, "Unexpected error during transaction", id="unexpected-error"
+    ),
+]
+
 
 class _EngineWithFailingDispose:
     async def dispose(self, **_kwargs: object) -> Never:
@@ -42,28 +51,22 @@ class _EngineWithFailingDispose:
 
 
 class TestRedactDatabaseUrl:
-    def test_masks_password_in_string_url(
+    @pytest.mark.parametrize(
+        "to_input",
+        [
+            pytest.param(str, id="str"),
+            pytest.param(SecretStr, id="secret-str"),
+            pytest.param(make_url, id="url-object"),
+        ],
+    )
+    def test_masks_password(
         self,
+        to_input: Callable[[str], str | SecretStr | URL],
         valid_database_url: str,
-        database_password: str,
-        database_user: str,
-        database_host: str,
+        make_database_url: Callable[..., str],
     ) -> None:
-        result = _redact_database_url(valid_database_url)
-        assert database_password not in result
-        assert database_user in result
-        assert database_host in result
-
-    def test_masks_password_in_secret_str(
-        self, valid_database_url: str, database_password: str, database_host: str
-    ) -> None:
-        result = _redact_database_url(SecretStr(valid_database_url))
-        assert database_password not in result
-        assert database_host in result
-
-    def test_accepts_url_object(self, valid_database_url: str) -> None:
-        url = make_url(valid_database_url)
-        assert _redact_database_url(url) == url.render_as_string(hide_password=True)
+        result = _redact_database_url(to_input(valid_database_url))
+        assert result == make_database_url(password="***")
 
     def test_renders_url_without_password(
         self, make_database_url: Callable[..., str]
@@ -113,6 +116,27 @@ class TestCreateEngine:
         assert isinstance(pool, AsyncAdaptedQueuePool)
         assert pool.size() == 3
 
+    @pytest.mark.parametrize("poolclass", [NullPool, StaticPool])
+    def test_creates_engine_with_non_queue_pool(
+        self, valid_database_url: str, poolclass: type[NullPool | StaticPool]
+    ) -> None:
+        engine = create_engine(valid_database_url, poolclass=poolclass)
+        assert engine is not None
+        assert isinstance(engine.pool, poolclass)
+
+    def test_passes_supplied_queue_pool_params_to_non_queue_pool(
+        self, valid_database_url: str
+    ) -> None:
+        with pytest.raises(TypeError, match="pool_size"):
+            create_engine(valid_database_url, poolclass=NullPool, pool_size=3)
+
+    def test_logs_engine_and_pool_when_verbose(
+        self, cap_json_logs: io.StringIO, valid_database_url: str
+    ) -> None:
+        create_engine(valid_database_url, verbose=True)
+        assert_log_event(cap_json_logs, "Created new database engine", level="info")
+        assert_log_event(cap_json_logs, "Database connection pool", level="info")
+
     def test_returns_none_on_failure(
         self, cap_json_logs: io.StringIO, make_database_url: Callable[..., str]
     ) -> None:
@@ -126,13 +150,13 @@ class TestCreateEngine:
         self, cap_json_logs: io.StringIO, make_database_url: Callable[..., str]
     ) -> None:
         url = make_database_url(driver=_INVALID_DRIVER)
-        with pytest.raises(SQLAlchemyError):
+        with pytest.raises(NoSuchModuleError):
             create_engine(url, raise_on_exc=True)
         assert_log_exception(
             cap_json_logs, "Error creating a new database engine", "NoSuchModuleError"
         )
 
-    def test_does_not_leak_password_on_failure(
+    def test_logs_masked_url_on_failure(
         self,
         cap_json_logs: io.StringIO,
         make_database_url: Callable[..., str],
@@ -140,38 +164,54 @@ class TestCreateEngine:
     ) -> None:
         url = make_database_url(driver=_INVALID_DRIVER)
         assert create_engine(url) is None
-        output = cap_json_logs.getvalue()
-        assert database_password not in output
-        assert "Error creating a new database engine" in output
+        masked_url = make_database_url(driver=_INVALID_DRIVER, password="***")
+        assert_log_event(cap_json_logs, f"URL -> `{masked_url}`")
+        assert database_password not in cap_json_logs.getvalue()
 
 
 class TestDescribeEngine:
     def test_logs_pool_metrics(
         self, cap_json_logs: io.StringIO, valid_database_url: str
     ) -> None:
-        engine = create_engine(valid_database_url)
+        engine = create_engine(valid_database_url, pool_size=3, pool_timeout=7.5)
         assert engine is not None
         describe_engine(engine)
-        record = parse_json_lines(cap_json_logs)[-1]
-        assert record["event"].startswith("Database connection pool")
-        assert "size=" in record["event"]
-        assert record["level"] == "info"
+        # A new queue pool has no checked-out connections and reports its overflow as
+        # the negated pool size.
+        assert_log_event(
+            cap_json_logs,
+            "size=3, checkedout=0, overflow=-3, timeout=7.5",
+            level="info",
+        )
+
+    def test_marks_metrics_the_pool_does_not_provide(
+        self, cap_json_logs: io.StringIO, valid_database_url: str
+    ) -> None:
+        engine = create_engine(valid_database_url, poolclass=NullPool)
+        assert engine is not None
+        describe_engine(engine)
+        assert_log_event(
+            cap_json_logs,
+            "size=not available, checkedout=not available, "
+            "overflow=not available, timeout=not available",
+            level="info",
+        )
 
     def test_reports_when_pool_unavailable(self, cap_json_logs: io.StringIO) -> None:
         describe_engine(cast(AsyncEngine, SimpleNamespace(pool=None)))
-        record = parse_json_lines(cap_json_logs)[-1]
-        assert record["event"].startswith("Pool metrics not available")
-        assert record["level"] == "debug"
+        assert_log_event(cap_json_logs, "Pool metrics not available", level="debug")
 
 
 class TestDisposeEngine:
-    async def test_disposes_unconnected_engine(self, valid_database_url: str) -> None:
+    async def test_discards_the_connection_pool(self, valid_database_url: str) -> None:
         engine = create_engine(valid_database_url)
         assert engine is not None
+        pool = engine.pool
         await dispose_engine(engine)
+        assert engine.pool is not pool
 
     async def test_requires_an_engine(self) -> None:
-        with pytest.raises(AssertionError):
+        with pytest.raises(AssertionError, match="engine instance must be provided"):
             await dispose_engine(cast(AsyncEngine, None))
 
     async def test_suppresses_disposal_errors(self, cap_json_logs: io.StringIO) -> None:
@@ -206,8 +246,8 @@ class TestCreateSessionmaker:
         engine = create_engine(valid_database_url)
         assert engine is not None
         factory = create_sessionmaker(engine)
-        for name, value in DEFAULT_ASYNC_SESSION_PARAMS.items():
-            assert factory.kw[name] == value
+        applied = {name: factory.kw[name] for name in DEFAULT_ASYNC_SESSION_PARAMS}
+        assert applied == DEFAULT_ASYNC_SESSION_PARAMS
 
     def test_overrides_session_defaults(self, valid_database_url: str) -> None:
         engine = create_engine(valid_database_url)
@@ -216,7 +256,7 @@ class TestCreateSessionmaker:
         assert factory.kw["expire_on_commit"] is True
 
     def test_requires_an_engine(self) -> None:
-        with pytest.raises(AssertionError):
+        with pytest.raises(AssertionError, match="engine instance must be provided"):
             create_sessionmaker(cast(AsyncEngine, None))
 
     def test_logs_when_verbose(
@@ -248,76 +288,42 @@ class TestCreateSession:
         assert fake.session.transaction.exited is True
         assert fake.session.closed is True
 
-    async def test_reraises_sqlalchemy_error_by_default(
+    @pytest.mark.parametrize(("error_type", "cause"), _TRANSACTION_ERRORS)
+    async def test_rolls_back_and_reraises_by_default(
         self,
         cap_json_logs: io.StringIO,
         make_fake_sessionmaker: Callable[[], FakeSessionMaker],
+        error_type: type[Exception],
+        cause: str,
     ) -> None:
         fake = make_fake_sessionmaker()
-        with pytest.raises(SQLAlchemyError):
+        with pytest.raises(error_type, match="boom"):
             async with create_session(cast(SessionMakerT, fake)):
-                raise SQLAlchemyError("boom")
-        assert fake.session.transaction.exit_exc_type is SQLAlchemyError
+                raise error_type("boom")
+        assert fake.session.transaction.exit_exc_type is error_type
         assert fake.session.closed is True
         assert_log_exception(
-            cap_json_logs,
-            "Database error during transaction",
-            "SQLAlchemyError",
-            exc_value="boom",
+            cap_json_logs, cause, error_type.__name__, exc_value="boom"
         )
         assert_log_event(cap_json_logs, "Transaction rolled back", level="error")
 
-    async def test_swallows_sqlalchemy_error_when_not_raising(
+    @pytest.mark.parametrize(("error_type", "cause"), _TRANSACTION_ERRORS)
+    async def test_rolls_back_and_suppresses_when_not_raising(
         self,
         cap_json_logs: io.StringIO,
         make_fake_sessionmaker: Callable[[], FakeSessionMaker],
+        error_type: type[Exception],
+        cause: str,
     ) -> None:
         fake = make_fake_sessionmaker()
         async with create_session(cast(SessionMakerT, fake), raise_on_exc=False):
-            raise SQLAlchemyError("boom")
-        assert fake.session.transaction.exit_exc_type is SQLAlchemyError
+            raise error_type("boom")
+        assert fake.session.transaction.exit_exc_type is error_type
         assert fake.session.closed is True
         assert_log_exception(
-            cap_json_logs,
-            "Database error during transaction",
-            "SQLAlchemyError",
-            exc_value="boom",
+            cap_json_logs, cause, error_type.__name__, exc_value="boom"
         )
-
-    async def test_reraises_unexpected_error_by_default(
-        self,
-        cap_json_logs: io.StringIO,
-        make_fake_sessionmaker: Callable[[], FakeSessionMaker],
-    ) -> None:
-        fake = make_fake_sessionmaker()
-        with pytest.raises(RuntimeError):
-            async with create_session(cast(SessionMakerT, fake)):
-                raise RuntimeError("boom")
-        assert fake.session.transaction.exit_exc_type is RuntimeError
-        assert fake.session.closed is True
-        assert_log_exception(
-            cap_json_logs,
-            "Unexpected error during transaction",
-            "RuntimeError",
-            exc_value="boom",
-        )
-
-    async def test_swallows_unexpected_error_when_not_raising(
-        self,
-        cap_json_logs: io.StringIO,
-        make_fake_sessionmaker: Callable[[], FakeSessionMaker],
-    ) -> None:
-        fake = make_fake_sessionmaker()
-        async with create_session(cast(SessionMakerT, fake), raise_on_exc=False):
-            raise RuntimeError("boom")
-        assert fake.session.transaction.exit_exc_type is RuntimeError
-        assert fake.session.closed is True
-        assert_log_exception(
-            cap_json_logs,
-            "Unexpected error during transaction",
-            "RuntimeError",
-            exc_value="boom",
-        )
+        assert_log_event(cap_json_logs, "Transaction rolled back", level="error")
 
     async def test_reraises_task_cancellation_even_when_not_raising(
         self,
@@ -346,14 +352,22 @@ class TestCreateSession:
             cast(SessionMakerT, fake), verbose=True, context="job-42"
         ):
             pass
-        records = parse_json_lines(cap_json_logs)
-        events = [record["event"] for record in records]
-        assert "Created new database session" in events
-        assert "Began transaction" in events
-        assert "Transaction committed" in events
-        assert any(
-            record.get("extra", {}).get("context") == "job-42" for record in records
-        )
+        # The capture also holds debug records from other loggers, such as asyncio
+        # reporting its selector while the event loop starts.
+        records = [
+            record
+            for record in parse_json_lines(cap_json_logs)
+            if record["logger"] == database.__name__
+        ]
+        assert [record["event"] for record in records] == [
+            "Created new database session",
+            "Began transaction",
+            "Transaction committed",
+            "Transaction closed",
+            "Session closed",
+        ]
+        contexts = [record.get("extra", {}).get("context") for record in records]
+        assert contexts == ["job-42"] * len(records)
 
 
 class TestPublicApi:
@@ -368,13 +382,6 @@ class TestPublicApi:
             "create_sessionmaker",
             "create_session",
         }
-
-    @pytest.mark.parametrize(
-        "name",
-        ["create_engine", "dispose_engine", "create_sessionmaker", "create_session"],
-    )
-    def test_exports_callable_helpers(self, name: str) -> None:
-        assert callable(getattr(database, name))
 
     def test_exposes_session_maker_type_alias(self) -> None:
         assert get_origin(SessionMakerT) is async_sessionmaker

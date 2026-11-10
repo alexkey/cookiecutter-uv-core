@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, TypedDict, cast
 
 from pydantic import SecretStr
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Query
-from sqlalchemy.pool import AsyncAdaptedQueuePool
+from sqlalchemy.pool import AsyncAdaptedQueuePool, QueuePool
 
 from {{ cookiecutter.repo_name }} import get_logger
 from {{ cookiecutter.repo_name }}.app.core.utils import repr_obj
@@ -114,6 +114,10 @@ class AsyncSessionParams(TypedDict, total=False):
     # pass in a no longer usable state, disabling re-use.
     close_resets_only: bool | _NoArg
 
+# Constructor arguments of QueuePool and its subclasses.
+_QUEUE_POOL_PARAMS = frozenset(
+    {"max_overflow", "pool_size", "pool_timeout", "pool_use_lifo"}
+)
 
 DEFAULT_ASYNC_ENGINE_PARAMS: AsyncEngineParams = {
     "echo": False,
@@ -163,6 +167,27 @@ def _redact_database_url(url: str | SecretStr | URL) -> str:
     return url_obj.render_as_string(hide_password=True)
 
 
+def _merge_engine_params(params: AsyncEngineParams) -> AsyncEngineParams:
+    """Returns DEFAULT_ASYNC_ENGINE_PARAMS overridden by `params`.
+
+    The queue-pool defaults are omitted when the resulting `poolclass` lies outside the
+    QueuePool hierarchy, because such pools reject them. Values supplied in `params` are
+    always kept.
+    """
+    merged: AsyncEngineParams = {**DEFAULT_ASYNC_ENGINE_PARAMS, **params}
+
+    # None lets the dialect choose its default pool, which is a queue pool for asyncio
+    # drivers.
+    poolclass = merged.get("poolclass")
+    if poolclass is None or issubclass(poolclass, QueuePool):
+        return merged
+
+    return cast(
+        AsyncEngineParams,
+        {k: v for k, v in merged.items() if k in params or k not in _QUEUE_POOL_PARAMS},
+    )
+
+
 def describe_engine(engine: AsyncEngine) -> None:
     """Logs the engine's connection pool metrics."""
     pool = getattr(engine, "pool", None)
@@ -193,8 +218,6 @@ def create_engine(
 ) -> AsyncEngine | None:
     """Creates an async engine from a database URL.
 
-    Supplied parameters override DEFAULT_ASYNC_ENGINE_PARAMS.
-
     Args:
         url: Database URL; a SecretStr is unwrapped before use and masked in logs.
         raise_on_exc: If True, re-raise on failure instead of returning None.
@@ -206,8 +229,10 @@ def create_engine(
 
     Raises:
         SQLAlchemyError: If engine creation fails and raise_on_exc is True.
+        TypeError: If a supplied parameter is invalid for the selected pool class,
+            regardless of raise_on_exc.
     """
-    merged: AsyncEngineParams = {**DEFAULT_ASYNC_ENGINE_PARAMS, **params}
+    merged = _merge_engine_params(params)
 
     try:
         # A `sqlalchemy.engine.URL` masks its password when printed, including in

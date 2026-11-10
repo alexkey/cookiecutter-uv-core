@@ -170,7 +170,13 @@ def _database_url(
 
 VALID_DATABASE_URL = _database_url()
 
+# URLs that the parser rejects for a malformed port containing the `_PASSWORD` text, so
+# a test can assert that the password stays out of the resulting error.
 MALFORMED_PORT_DATABASE_URLS = (
-    f"{_DRIVER}://{_USER}:{_PASSWORD}/{_DATABASE}",  # <- `@` separator omitted
-    _database_url(password=f"p@ss:{_PASSWORD}"),     # <- unescaped `@` and `:` in the password
+    pytest.param(
+        f"{_DRIVER}://{_USER}:{_PASSWORD}/{_DATABASE}", id="missing-at-separator"
+    ),
+    pytest.param(
+        _database_url(password=f"p@ss:{_PASSWORD}"), id="unescaped-at-and-colon"
+    ),
 )

@@ -5,8 +5,9 @@ import json
 import logging
 import sys
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import TextIO, cast, get_args
-from unittest.mock import Mock
+from unittest.mock import create_autospec
 
 import pytest
 
@@ -17,6 +18,7 @@ from {{ cookiecutter.repo_name }}.logging import (
     LogFormatT,
     LoggerT,
     OrderedKeysProcessor,
+    SupportsLevelCheck,
     _should_use_colors,
     check_log_level,
     get_logger,
@@ -24,6 +26,17 @@ from {{ cookiecutter.repo_name }}.logging import (
     setup_logging,
 )
 from tests.utils import _PASSWORD, assert_log_event, parse_json_lines
+
+_INVALID_LEVELS = [
+    pytest.param("nope", ValueError, "invalid log level", id="unknown-name"),
+    pytest.param(-1, ValueError, "invalid log level", id="unknown-number"),
+    pytest.param(True, TypeError, "must be string or integer", id="bool"),
+]
+
+
+class _TtyStringIO(io.StringIO):
+    def isatty(self) -> bool:
+        return True
 
 
 def _find_app_handler() -> logging.Handler | None:
@@ -74,7 +87,7 @@ class TestCheckLogLevel:
 
 class TestIsLevelEnabled:
     def test_defaults_to_debug(self) -> None:
-        logger = Mock()
+        logger = create_autospec(SupportsLevelCheck, instance=True)
         logger.isEnabledFor.return_value = True
         assert is_level_enabled(logger) is True
         logger.isEnabledFor.assert_called_once_with(logging.DEBUG)
@@ -94,20 +107,22 @@ class TestIsLevelEnabled:
         level: str | int,
         expected_number: int,
     ) -> None:
-        logger = Mock()
+        logger = create_autospec(SupportsLevelCheck, instance=True)
         logger.isEnabledFor.return_value = True
         is_level_enabled(logger, level=level)
         logger.isEnabledFor.assert_called_once_with(expected_number)
 
     def test_returns_false_when_level_not_enabled(self) -> None:
-        logger = Mock()
+        logger = create_autospec(SupportsLevelCheck, instance=True)
         logger.isEnabledFor.return_value = False
         assert is_level_enabled(logger, level="info") is False
 
-    @pytest.mark.parametrize("level", ["nope", -1, True])
-    def test_rejects_invalid_level(self, level: str | int) -> None:
-        logger = Mock()
-        with pytest.raises((ValueError, TypeError)):
+    @pytest.mark.parametrize(("level", "error", "message"), _INVALID_LEVELS)
+    def test_rejects_invalid_level(
+        self, level: str | int, error: type[Exception], message: str
+    ) -> None:
+        logger = create_autospec(SupportsLevelCheck, instance=True)
+        with pytest.raises(error, match=message):
             is_level_enabled(logger, level=level)
         logger.isEnabledFor.assert_not_called()
 
@@ -123,7 +138,7 @@ class TestIsLevelEnabled:
 class TestOrderedKeysProcessor:
     @pytest.mark.parametrize("bad_order", [["a", "b"], {"a", "b"}, "ab", None])
     def test_init_requires_tuple(self, bad_order: object) -> None:
-        with pytest.raises(AssertionError):
+        with pytest.raises(AssertionError, match="key_order must be a tuple"):
             OrderedKeysProcessor(
                 bad_order  # type: ignore[arg-type, ty:invalid-argument-type]
             )
@@ -168,21 +183,14 @@ class TestOrderedKeysProcessor:
 
 
 class TestShouldUseColors:
-    def test_disabled_when_no_color_is_set(
+    @pytest.mark.parametrize("no_color", ["1", ""], ids=["set", "empty"])
+    def test_disabled_when_no_color_is_present(
         self,
         monkeypatch: pytest.MonkeyPatch,
         make_fake_stream: Callable[..., TextIO],
+        no_color: str,
     ) -> None:
-        monkeypatch.setenv("NO_COLOR", "1")
-        stream = make_fake_stream(isatty=True)
-        assert _should_use_colors(stream, enable_colors=True) is False
-
-    def test_disabled_when_no_color_is_empty(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        make_fake_stream: Callable[..., TextIO],
-    ) -> None:
-        monkeypatch.setenv("NO_COLOR", "")
+        monkeypatch.setenv("NO_COLOR", no_color)
         stream = make_fake_stream(isatty=True)
         assert _should_use_colors(stream, enable_colors=True) is False
 
@@ -254,16 +262,29 @@ class TestSetupLogging:
         assert record["level"] == "info"
         assert record["logger"] == "svc"
         assert record["user_id"] == 7
-        assert "timestamp" in record
-        for key in ("process", "thread", "filename", "func_name", "lineno"):
-            assert key in record
+        assert datetime.fromisoformat(record["timestamp"]).utcoffset() == timedelta(0)
+        assert record["filename"] == "test_logging.py"
+        assert record["func_name"] == "test_json_format_emits_structured_record"
+        assert {"process", "thread", "lineno"} <= record.keys()
 
-    def test_json_format_orders_leading_keys(self) -> None:
+    def test_json_format_orders_known_keys_before_extra_fields(self) -> None:
         stream = io.StringIO()
         setup_logging("debug", "json", log_stream=stream)
         get_logger("svc").warning("careful", detail="x")
         record = parse_json_lines(stream)[0]
-        assert list(record)[:4] == ["timestamp", "logger", "level", "event"]
+        assert list(record) == [
+            # pylint: disable=duplicate-code
+            "timestamp",
+            "logger",
+            "level",
+            "event",
+            "process",
+            "thread",
+            "filename",
+            "func_name",
+            "lineno",
+            "detail",
+        ]
 
     def test_console_format_is_human_readable(self) -> None:
         stream = io.StringIO()
@@ -275,13 +296,25 @@ class TestSetupLogging:
         with pytest.raises(json.JSONDecodeError):
             json.loads(output)
 
-    def test_console_format_has_no_ansi_for_non_tty(self) -> None:
+    def test_console_format_has_no_ansi_for_non_tty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("NO_COLOR", raising=False)
         stream = io.StringIO()
         setup_logging("debug", "console", log_stream=stream, enable_colors=True)
         _log_exception()
         output = stream.getvalue()
         assert "ValueError" in output
         assert "\x1b[" not in output
+
+    def test_console_format_colors_output_for_requested_tty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        stream = _TtyStringIO()
+        setup_logging("debug", "console", log_stream=stream, enable_colors=True)
+        get_logger("svc").info("hello world")
+        assert "\x1b[" in stream.getvalue()
 
     @pytest.mark.parametrize("log_format", ["console", "json"])
     def test_traceback_omits_local_variables(self, log_format: LogFormatT) -> None:
@@ -325,9 +358,11 @@ class TestSetupLogging:
         get_logger("svc").info("cached")
         assert parse_json_lines(stream)[0]["event"] == "cached"
 
-    @pytest.mark.parametrize("bad_level", ["nope", -1, True])
-    def test_rejects_invalid_level(self, bad_level: str | int) -> None:
-        with pytest.raises((ValueError, TypeError)):
+    @pytest.mark.parametrize(("bad_level", "error", "message"), _INVALID_LEVELS)
+    def test_rejects_invalid_level(
+        self, bad_level: str | int, error: type[Exception], message: str
+    ) -> None:
+        with pytest.raises(error, match=message):
             setup_logging(
                 bad_level,  # type: ignore[arg-type, ty:invalid-argument-type]
                 "json",
@@ -393,5 +428,3 @@ class TestPublicApi:
             "is_level_enabled",
             "setup_logging",
         }
-        for name in app_logging.__all__:
-            assert callable(getattr(app_logging, name))

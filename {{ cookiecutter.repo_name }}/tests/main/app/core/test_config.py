@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from traceback import format_exception
@@ -91,18 +92,25 @@ class TestCheckDatabaseUrl:
         self, make_database_url: Callable[..., str], driver: str
     ) -> None:
         url = make_database_url(driver=driver)
-        with pytest.raises(ValueError, match="driver"):
+        with pytest.raises(ValueError, match=re.escape(f"driver, not `{driver}`")):
             check_database_url(SecretStr(url))
 
     def test_rejects_missing_host(self, make_database_url: Callable[..., str]) -> None:
         with pytest.raises(ValueError, match="host or socket"):
             check_database_url(SecretStr(make_database_url(host=None)))
 
+    @pytest.mark.parametrize(
+        "database",
+        [
+            pytest.param(None, id="no-path"),
+            pytest.param("", id="bare-slash"),
+        ],
+    )
     def test_rejects_missing_database_name(
-        self, make_database_url: Callable[..., str]
+        self, make_database_url: Callable[..., str], database: str | None
     ) -> None:
         with pytest.raises(ValueError, match="database name"):
-            check_database_url(SecretStr(make_database_url(database=None)))
+            check_database_url(SecretStr(make_database_url(database=database)))
 
 
 class TestResolveEnvFile:
@@ -149,21 +157,27 @@ class TestSettingsDefaults:
                 _env_file=None,
             )
 
+    # The leak tests supply the URL as a plain string through the environment, as in
+    # production. A `SecretStr` input would mask itself in the error and pass even if
+    # the settings echoed raw input.
+
     def test_does_not_leak_secret_in_validation_errors(
-        self, make_database_url: Callable[..., str]
+        self, monkeypatch: pytest.MonkeyPatch, make_database_url: Callable[..., str]
     ) -> None:
         secret_password = "sup3r-secret"
         url = make_database_url(driver="postgresql", password=secret_password)
-        with pytest.raises(ValidationError) as excinfo:
-            Settings(DATABASE_URL=SecretStr(url), _env_file=None)
+        monkeypatch.setenv(f"{_PREFIX}DATABASE_URL", url)
+        with pytest.raises(ValidationError, match="driver") as excinfo:
+            Settings(_env_file=None)
         assert secret_password not in str(excinfo.value)
 
     @pytest.mark.parametrize("url", MALFORMED_PORT_DATABASE_URLS)
     def test_does_not_leak_secret_from_malformed_port(
-        self, url: str, database_password: str
+        self, monkeypatch: pytest.MonkeyPatch, url: str, database_password: str
     ) -> None:
-        with pytest.raises(ValidationError) as excinfo:
-            Settings(DATABASE_URL=SecretStr(url), _env_file=None)
+        monkeypatch.setenv(f"{_PREFIX}DATABASE_URL", url)
+        with pytest.raises(ValidationError, match="invalid database URL") as excinfo:
+            Settings(_env_file=None)
         assert database_password not in str(excinfo.value)
 
 
@@ -199,9 +213,12 @@ class TestSettingsEnvironment:
         assert settings.LOG_LEVEL == "DEBUG"
 
     def test_forbids_unknown_fields(self, valid_database_url: str) -> None:
-        data = {"DATABASE_URL": valid_database_url, "NONEXISTENT": "x"}
         with pytest.raises(ValidationError, match="NONEXISTENT"):
-            Settings.model_validate(data)
+            Settings(
+                DATABASE_URL=SecretStr(valid_database_url),
+                NONEXISTENT="x",  # type: ignore[call-arg, ty:unknown-argument]
+                _env_file=None,
+            )
 
     def test_reads_values_from_env_file(
         self, tmp_path: Path, valid_database_url: str
@@ -215,6 +232,19 @@ class TestSettingsEnvironment:
         settings = Settings(_env_file=str(env_file))
         assert settings.LOG_LEVEL == "WARNING"
         assert settings.DATABASE_URL == SecretStr(valid_database_url)
+
+    def test_environment_overrides_env_file(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, valid_database_url: str
+    ) -> None:
+        env_file = tmp_path / ".env.settings"
+        env_file.write_text(
+            f"{_PREFIX}LOG_LEVEL=warning\n{_PREFIX}DATABASE_URL={valid_database_url}\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv(f"{_PREFIX}LOG_LEVEL", "info")
+
+        settings = Settings(_env_file=str(env_file))
+        assert settings.LOG_LEVEL == "INFO"
 
 
 @pytest.mark.usefixtures("valid_environment")
