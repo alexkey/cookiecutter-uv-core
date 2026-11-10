@@ -24,5 +24,10 @@
 
     "redis_image_tag": "8.10.3-alpine",
     "postgres_image_tag": "18.6-alpine",
-    "postgres_user": "database"
+    "postgres_user": "database",
+
+    "_copy_without_render": [
+        ".agents/skills/*.md",
+        ".agents/skills/*.yaml"
+    ]
 }

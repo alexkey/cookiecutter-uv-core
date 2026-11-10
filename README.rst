@@ -11,6 +11,10 @@ access to PostgreSQL, a CLI entry point, and multi-platform Docker images.
 The template also includes a comprehensive Makefile-driven workflow for
 dependency management, containerization, code quality, and testing.
 
+.. contents:: Contents
+   :depth: 2
+   :backlinks: none
+
 Get Started
 ===========
 
@@ -808,3 +812,88 @@ use the plain ``@pytest.fixture`` decorator.
 
 * ``items_table`` - creates an isolated throwaway table in the run schema and
   drops it after the test.
+
+AI-Assisted Development
+=======================
+
+The generated project bundles agent skills that use the open `Agent Skills`_
+format and run unchanged in `Claude Code`_ and `OpenAI Codex`_. Each skill's
+canonical copy lives in ``.agents/skills/<name>``, which *Codex* reads; a
+post-generation hook symlinks it into ``.claude/skills``, which *Claude Code*
+reads. Edit only the canonical copy.
+
+.. _`Agent Skills`: https://agentskills.io/
+.. _`Claude Code`: https://code.claude.com/docs/en/skills
+.. _`OpenAI Codex`: https://learn.chatgpt.com/docs/build-skills
+
+.. contents:: Bundled Skills
+   :local:
+   :depth: 1
+   :backlinks: none
+
+Creating and Updating Tests (``update-tests``)
+----------------------------------------------
+
+**Overview**
+
+The ``update-tests`` skill creates new tests and improves existing ones at any
+test level. It assumes no language, framework, or layout: it learns the
+tooling, conventions, and test infrastructure from the project itself. Do not
+use it to debug a production defect behind a single failing test.
+
+**Usage**
+
+Start the agent in the project root and invoke the skill with a mode, a path,
+and optional instructions::
+
+    <create|update> <path> [instructions]
+
+In *Claude Code*, type ``/update-tests`` followed by the arguments; in
+*Codex*, mention ``$update-tests`` in the message. Both agents also select the
+skill on their own when a request asks to write, review, refactor, or
+stabilize tests; the request then supplies the arguments.
+
+For example::
+
+    # Create unit tests in a new directory for code that has none.
+    /update-tests create tests/main/app/cli cover lazy subcommand loading
+
+    # Create a single new test module.
+    /update-tests create tests/main/app/test_runtime.py cover app_lifespan
+
+    # Audit and refactor every test under a directory.
+    /update-tests update tests/main/app/core
+
+    # In Codex, direct the update toward a specific problem in one file.
+    $update-tests update tests/main/test_logging.py focus on order dependence
+
+The skill restates the resolved arguments, presents a plan before editing, and
+ends with a report of its changes and how it verified them.
+
+**Arguments**
+
+* ``mode`` (required) - ``create`` or ``update``:
+
+  - ``create`` writes new tests at ``path`` for the code or behavior that the
+    instructions name;
+  - ``update`` audits the tests at ``path`` and refactors them to close
+    coverage gaps, remove redundancy, strengthen weak assertions, and
+    eliminate flakiness.
+
+  When the first word is not a mode, the skill infers the mode from the
+  request and asks when the request supports both readings.
+
+* ``path`` (required) - one directory or test file, relative to the working
+  directory. It is the only location where the skill creates or changes tests;
+  changes to anything else, such as production code, shared fixtures, or
+  dependencies, are proposed and applied only after approval. In ``update``
+  mode, the path must contain tests; in ``create`` mode, it may name a
+  directory or file that does not exist yet, provided its parent directory
+  exists. Without a path, the skill asks for one instead of searching the
+  project.
+
+* ``instructions`` (optional) - free text after the path. In ``create`` mode,
+  it names the code or behavior to test; without it, the skill extends the
+  existing tests at ``path`` or, if there are none, asks what to test. In
+  ``update`` mode, it narrows or directs the work, for example toward a
+  specific problem.
