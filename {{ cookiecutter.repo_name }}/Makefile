@@ -305,11 +305,7 @@ env-check-venv:
 env-check-lockfile:
 	@[[ -f "$(UV_LOCKFILE)" ]] \
 		|| $(call error_helper,The project lockfile does not exist: \
-			\`$(UV_LOCKFILE)\`)
-	$(info Requires the project lockfile (`uv.lock`). If the lockfile is out of date, \
-		the target either exits with an error or ignores the unlocked dependency \
-		changes; run `make requirements` to update it \
-	)
+			\`$(UV_LOCKFILE)\`. Run \`make requirements\` to create it)
 
 .PHONY: env-show-python
 # target: env-show-python - Display the environment variables used to configure Python and related tools
