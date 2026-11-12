@@ -114,6 +114,7 @@ class AsyncSessionParams(TypedDict, total=False):
     # pass in a no longer usable state, disabling re-use.
     close_resets_only: bool | _NoArg
 
+
 # Constructor arguments of QueuePool and its subclasses.
 _QUEUE_POOL_PARAMS = frozenset(
     {"max_overflow", "pool_size", "pool_timeout", "pool_use_lifo"}

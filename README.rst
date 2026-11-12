@@ -816,11 +816,117 @@ use the plain ``@pytest.fixture`` decorator.
 AI-Assisted Development
 =======================
 
-The generated project bundles agent skills that use the open `Agent Skills`_
-format and run unchanged in `Claude Code`_ and `OpenAI Codex`_. Each skill's
-canonical copy lives in ``.agents/skills/<name>``, which *Codex* reads; a
-post-generation hook symlinks it into ``.claude/skills``, which *Claude Code*
-reads. Edit only the canonical copy.
+The generated project is prepared for *Claude Code* and *OpenAI Codex*. It
+bundles project instructions, which both agents load at the start of every
+session, and agent skills, which they load when a task calls for one.
+
+Each asset has one canonical copy, stored where *Codex* reads it. A
+post-generation hook symlinks it into the location that *Claude Code* reads.
+Edit only the canonical copy:
+
+====================  ===========================  =========================
+Asset                 Canonical copy (*Codex*)     Symlink (*Claude Code*)
+====================  ===========================  =========================
+Project instructions  ``AGENTS.md``                ``CLAUDE.md``
+Reference files       ``.agents/docs/<topic>.md``  none; read on demand
+Agent skills          ``.agents/skills/<name>/``   ``.claude/skills/<name>``
+====================  ===========================  =========================
+
+The symlinks are relative and belong under version control with the rest of the
+project.
+
+Project Instructions
+--------------------
+
+``AGENTS.md`` in the project root gives an agent the knowledge that it cannot
+infer from the code: the mandatory rules, the commands of the development
+workflow, the project layout, and an index of reference files. *Codex* reads
+``AGENTS.md`` natively (see `Custom instructions with AGENTS.md`_).
+*Claude Code* reads ``CLAUDE.md``, the symlink to it (see `How Claude remembers
+your project`_). Recent *Claude Code* versions also read ``AGENTS.md``
+directly, but only when no ``CLAUDE.md`` or ``CLAUDE.local.md`` exists in the
+project directory or above it; the symlink makes the instructions load
+regardless of such files and of the agent version.
+
+.. _`Custom instructions with AGENTS.md`: https://learn.chatgpt.com/docs/agent-configuration/agents-md
+.. _`How Claude remembers your project`: https://code.claude.com/docs/en/memory
+
+Cookiecutter renders the instruction files, which therefore name the package,
+the console script, and the environment prefix of the generated project.
+
+**Organization**
+
+The instructions keep the context that every session pays for small:
+
+* ``AGENTS.md`` is loaded into every session and holds only what applies to
+  most tasks.
+
+* The reference files under ``.agents/docs`` are not loaded automatically. The
+  *Reference* table in ``AGENTS.md`` names the tasks that each file serves, and
+  the agent reads a file when its task enters that area:
+
+  - ``architecture.md`` - components, startup flow, design decisions,
+    configuration, logging, and recipes for adding a command, a setting, or a
+    shared resource;
+  - ``database.md`` - session and engine lifecycle, and the rationale behind
+    the defaults;
+  - ``conventions.md`` - code conventions that the analysis tools do not
+    enforce on their own;
+  - ``testing.md`` - test layout, running tests, fixtures, and helpers;
+  - ``workflows.md`` - environment setup, quality checks, dependency
+    management, and builds;
+  - ``infrastructure.md`` - the Docker image, the Compose stack, and their
+    targets.
+
+* Sections titled *Rules* are mandatory for the agent. All other content is
+  context that informs its decisions; where it disagrees with the code, the
+  code wins and the instructions are corrected.
+
+**Verification**
+
+Start the agent in the root of the generated project and confirm that it loaded
+the instructions:
+
+* In *Claude Code*, run ``/memory`` or ``/context all``; ``CLAUDE.md`` appears
+  among the memory files.
+
+* In *Codex*, run ``codex "Summarize the current instructions."``; the summary
+  cites the rules from ``AGENTS.md``. *Codex* treats the nearest directory that
+  contains ``.git`` as the project root and loads every ``AGENTS.md`` from
+  there down to the working directory. Initialize the Git work tree first, as
+  in `A Typical Session`_, to make the generated project that root.
+
+**Maintenance**
+
+* Edit ``AGENTS.md``, never ``CLAUDE.md``: *Claude Code* refuses to write
+  through the symlink.
+
+* Update the instructions in the same change that alters a command, a path, a
+  rule, or a design decision they describe, and delete an instruction that the
+  code no longer supports.
+
+* Keep ``AGENTS.md`` under 200 lines, the size that *Claude Code* recommends
+  for reliable adherence, and well within the 32 KiB that *Codex* reads from
+  project instruction files by default. Move detail that serves one area into a
+  reference file and list it in the *Reference* table.
+
+* Keep personal instructions out of version control: ``CLAUDE.local.md``,
+  which *Claude Code* loads alongside ``CLAUDE.md``, and
+  ``AGENTS.override.md``, which *Codex* reads in place of the ``AGENTS.md`` in
+  the same directory.
+
+* In the template, the instruction files are Jinja templates, unlike the
+  skills, which Cookiecutter copies without rendering. Use the
+  ``cookiecutter.*`` variables for project-specific names, and keep literal
+  Jinja delimiters out of the text.
+
+Skills
+------
+
+The bundled skills use the open `Agent Skills`_ format and run unchanged in
+`Claude Code`_ and `OpenAI Codex`_. Each skill's canonical copy lives in
+``.agents/skills/<name>``, which *Codex* reads; the post-generation hook
+symlinks it into ``.claude/skills``, which *Claude Code* reads.
 
 .. _`Agent Skills`: https://agentskills.io/
 .. _`Claude Code`: https://code.claude.com/docs/en/skills
@@ -832,7 +938,7 @@ reads. Edit only the canonical copy.
    :backlinks: none
 
 Creating and Updating Tests (``update-tests``)
-----------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 **Overview**
 
