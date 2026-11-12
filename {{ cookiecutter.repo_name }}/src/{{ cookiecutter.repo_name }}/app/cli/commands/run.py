@@ -7,7 +7,7 @@ from {{ cookiecutter.repo_name }}.app.cli._decorators import (
     configure,
     run_async,
 )
-from {{ cookiecutter.repo_name }}.app.runtime import app_lifespan
+lazy from {{ cookiecutter.repo_name }}.app.runtime import app_lifespan
 
 __all__ = [
     "run_cmd",

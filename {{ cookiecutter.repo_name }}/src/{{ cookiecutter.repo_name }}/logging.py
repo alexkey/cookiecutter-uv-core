@@ -135,6 +135,37 @@ def _should_use_colors(stream: TextIO, *, enable_colors: bool) -> bool:
     return enable_colors and hasattr(stream, "isatty") and stream.isatty()
 
 
+def _console_renderer(
+    stream: TextIO, *, enable_colors: bool, enable_rich: bool
+) -> structlog.dev.ConsoleRenderer:
+    """Returns the renderer for the "console" format.
+
+    Args:
+        stream: Stream that receives log output; colors require it to be a TTY.
+        enable_colors: If `True`, colorize output, as `_should_use_colors()` permits.
+        enable_rich: If `True`, render tracebacks with Rich; otherwise, in the plain
+            standard-library format. Rich can take seconds to render a long traceback,
+            such as a database error, and blocks the thread that logs, which stalls an
+            event loop.
+    """
+    colors = _should_use_colors(stream, enable_colors=enable_colors)
+
+    exception_formatter: structlog.typing.ExceptionRenderer
+    if enable_rich:
+        # Hide local variables, which can hold secrets. Set the color system
+        # explicitly: this formatter does not inherit `colors`.
+        exception_formatter = structlog.dev.RichTracebackFormatter(
+            color_system="truecolor" if colors else None,
+            show_locals=False,
+        )
+    else:
+        exception_formatter = structlog.dev.plain_traceback
+
+    return structlog.dev.ConsoleRenderer(
+        colors=colors, exception_formatter=exception_formatter
+    )
+
+
 def setup_logging(
     log_level: str,
     log_format: LogFormatT,
@@ -228,16 +259,12 @@ def setup_logging(
             shared_processors.append(
                 structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False)
             )
-            _colors = _should_use_colors(stream, enable_colors=enable_colors)
             processors.append(
-                structlog.dev.ConsoleRenderer(
-                    colors=_colors,
-                    # Hide local variables, which can hold secrets. Set the color system
-                    # explicitly: this formatter does not inherit `colors`.
-                    exception_formatter=structlog.dev.RichTracebackFormatter(
-                        color_system="truecolor" if _colors else None,
-                        show_locals=False,
-                    ),
+                _console_renderer(
+                    stream,
+                    enable_colors=enable_colors,
+                    # Pass `False` for plain tracebacks, rendered in milliseconds.
+                    enable_rich=True,
                 )
             )
 

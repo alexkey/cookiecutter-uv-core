@@ -1,10 +1,10 @@
 # Development workflows
 
 Read this before setting up the environment, changing dependencies, adding a Makefile
-target, or building a distribution. The Makefile is the authoritative list of
-targets and variables: `make help` lists the targets, and the `make env-show-python`,
-`make env-show-qa`, and `make env-show-docker` targets print the variables with their
-current values.
+target, building a distribution, or writing an execution plan. The Makefile is the
+authoritative list of targets and variables: `make help` lists the targets, and the
+`make env-show-python`, `make env-show-qa`, and `make env-show-docker` targets print
+the variables with their current values.
 
 ## Rules
 
@@ -112,6 +112,30 @@ Other targets: `make requirements-tree` prints the dependency tree,
   it, run `make requirements` and `make install`.
 - `Changelog` records the changes of each version; follow the format of the existing
   entries.
+
+## Execution plans
+
+An execution plan records a change that is too large for one conversation: its
+requirements, design decisions, steps, validation, and progress. It is self-contained,
+so a later session can continue the work from the plan and the working tree alone. For
+planning and implementing such a change, the `develop` skill provides a complete
+procedure: it writes the plan, keeps it current during the implementation, and closes it
+when the work is done. Only the user starts the skill, by name: `/develop` in Claude
+Code, `$develop` in Codex. When a task fits the skill, suggest it to the user instead of
+following its procedure on your own.
+
+- `docs/exec-plans/active/` holds the plans in progress, and
+  `docs/exec-plans/completed/` the completed and cancelled ones. A plan moves from the
+  first to the second when it is closed.
+- `docs/exec-plans/tech-debt-tracker.md` lists deferred work, known shortcuts, and
+  declined follow-ups. Each entry names its source and its remedy, and is removed in the
+  change that resolves it.
+- A plan's file name is its creation date in ISO 8601 form followed by a short
+  kebab-case description, such as `docs/exec-plans/active/2026-11-12-report-export.md`.
+  Every date and time in the plans and in the tracker is UTC. The `.gitkeep` files keep
+  the empty directories under version control and are not plans.
+- Plans are project files: keep them under version control with the change they
+  describe.
 
 ## Source notes
 

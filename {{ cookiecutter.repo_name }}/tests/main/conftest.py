@@ -3,11 +3,13 @@ from __future__ import annotations
 import io
 import logging
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import TextIO, cast
 
 import pytest
 import structlog
 
+from {{ cookiecutter.repo_name }}.app.core.config import Settings, _get_settings
 from {{ cookiecutter.repo_name }}.logging import setup_logging
 from tests.utils import (
     _DATABASE,
@@ -18,6 +20,14 @@ from tests.utils import (
     _USER,
     VALID_DATABASE_URL,
     _database_url,
+)
+
+_PREFIX = "{{ cookiecutter.env_prefix }}"
+
+_CONFIG_ENV_VARS = (
+    # pylint: disable=not-an-iterable
+    *(f"{_PREFIX}{name}" for name in Settings.model_fields),
+    f"{_PREFIX}ENV_FILE",
 )
 
 
@@ -75,6 +85,32 @@ def make_database_url() -> Callable[..., str]:
 @pytest.fixture
 def valid_database_url() -> str:
     return VALID_DATABASE_URL
+
+
+@pytest.fixture(autouse=True)
+def _isolate_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Removes config env vars and clears the cached singleton around every test."""
+    for name in _CONFIG_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+
+    _get_settings.cache_clear()
+    try:
+        yield
+    finally:
+        _get_settings.cache_clear()
+
+
+@pytest.fixture
+def valid_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Supplies a valid database URL and an empty environment file.
+
+    The empty file isolates the test from `.env.local`.
+    """
+    empty_env_file = tmp_path / ".env.empty"
+    empty_env_file.write_text("", encoding="utf-8")
+
+    monkeypatch.setenv(f"{_PREFIX}ENV_FILE", str(empty_env_file))
+    monkeypatch.setenv(f"{_PREFIX}DATABASE_URL", VALID_DATABASE_URL)
 
 
 @pytest.fixture(autouse=True)

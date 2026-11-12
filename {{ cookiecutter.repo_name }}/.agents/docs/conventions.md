@@ -26,6 +26,8 @@ tools enforce part of them: Ruff, ty, Mypy, and Pylint all run under `make lint`
 - Most modules start with `from __future__ import annotations` and keep imports that
   only annotations need under `if TYPE_CHECKING:`. Types that Pydantic resolves at
   runtime, such as the field types in `app/core/config.py`, stay regular imports.
+- Modules on the CLI's startup path import with `lazy` the names that only function
+  bodies use; rule 2 of `architecture.md` lists those modules and the exceptions.
 - Modules declare their public names in `__all__`.
 - A leading underscore marks a private module (`_decorators.py`, `_lazy.py`) or a
   private name. Tests may import private names of the module under test.

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
 from traceback import format_exception
 
@@ -11,7 +11,6 @@ from pydantic import SecretStr, ValidationError
 from {{ cookiecutter.repo_name }}.app.core.config import (
     DEFAULT_LOCAL_ENV_FILE,
     Settings,
-    _get_settings,
     _resolve_env_file,
     check_database_url,
     get_settings,
@@ -19,43 +18,6 @@ from {{ cookiecutter.repo_name }}.app.core.config import (
 from tests.utils import MALFORMED_PORT_DATABASE_URLS
 
 _PREFIX = "{{ cookiecutter.env_prefix }}"
-
-_CONFIG_ENV_VARS = (
-    f"{_PREFIX}LOG_LEVEL",
-    f"{_PREFIX}LOG_FORMAT",
-    f"{_PREFIX}LOG_COLORS",
-    f"{_PREFIX}LOG_VERBOSE",
-    f"{_PREFIX}DATABASE_URL",
-    f"{_PREFIX}ENV_FILE",
-)
-
-
-@pytest.fixture(autouse=True)
-def _isolate_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Removes config env vars and clears the cached singleton around every test."""
-    for name in _CONFIG_ENV_VARS:
-        monkeypatch.delenv(name, raising=False)
-
-    _get_settings.cache_clear()
-    try:
-        yield
-    finally:
-        _get_settings.cache_clear()
-
-
-@pytest.fixture
-def valid_environment(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, valid_database_url: str
-) -> None:
-    """Supplies a valid database URL and an empty environment file.
-
-    The empty file isolates the test from `.env.local`.
-    """
-    empty_env_file = tmp_path / ".env.empty"
-    empty_env_file.write_text("", encoding="utf-8")
-
-    monkeypatch.setenv(f"{_PREFIX}ENV_FILE", str(empty_env_file))
-    monkeypatch.setenv(f"{_PREFIX}DATABASE_URL", valid_database_url)
 
 
 class TestCheckDatabaseUrl:

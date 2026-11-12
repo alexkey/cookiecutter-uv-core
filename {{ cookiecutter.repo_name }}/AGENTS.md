@@ -89,6 +89,7 @@ tests/system/            tests against live services (make autotest)
 tests/utils.py           shared test helpers; fixtures live in conftest.py files
 docker/                  Dockerfiles, Compose file, container scripts
 etc/scripts/             standalone maintenance scripts with inline dependencies
+docs/exec-plans/         execution plans (active/, completed/) and the tech-debt tracker
 Makefile                 every development task
 pyproject.toml           metadata, dependencies, Deptry settings
 ruff.toml, ty.toml, mypy.ini, pylintrc, pytest.ini    tool configuration
@@ -105,7 +106,7 @@ and skip the files the task does not need.
 | `.agents/docs/database.md` | write code that creates sessions, runs queries, or configures the engine |
 | `.agents/docs/conventions.md` | write or review Python code |
 | `.agents/docs/testing.md` | write, run, or debug tests |
-| `.agents/docs/workflows.md` | set up the environment, change dependencies, add a Makefile target, or build a distribution |
+| `.agents/docs/workflows.md` | set up the environment, change dependencies, add a Makefile target, build a distribution, or write an execution plan |
 | `.agents/docs/infrastructure.md` | build an image, run the Compose stack, or change anything under `docker/` |
 
 ## Maintaining these instructions

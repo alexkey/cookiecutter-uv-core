@@ -48,6 +48,8 @@ the default shown for each prompt:
 * ``url`` and ``repository`` - the project homepage and source repository URLs.
 * ``license`` - the `SPDX license identifier`_.
 * ``uv_version`` and ``python_version`` - the pinned *uv* and CPython versions.
+  The generated code, as shipped, uses explicit lazy imports and therefore
+  requires a ``python_version`` of 3.15 or later.
 * ``docker_build_platform`` - the target platform for Docker image builds.
 * ``redis_image_tag`` and ``postgres_image_tag`` - the Docker Compose service
   image tags.
@@ -572,18 +574,20 @@ Creating commands and lazy loading
 
 The template ships one subcommand, ``run``, whose body is a stub: it enters the
 lifespan and leaves a placeholder for the service's own logic. Further behavior
-is added as more subcommands, which the group loads lazily. ``LazyGroup``
-imports a subcommand's module only when that command is resolved, which keeps
-startup cheap:
+is added as more subcommands. Two mechanisms keep startup cheap:
 
-* The group's ``--help`` and ``--version`` respond without importing any
-  command.
+* ``LazyGroup`` imports a subcommand's module only when that command is
+  resolved; invoking one command never imports another.
 
-* Invoking one command never imports another: a command pays for its
-  dependencies only when it runs.
+* Explicit lazy imports (PEP 810, Python 3.15) defer each module's
+  dependencies until their first use. The group's ``--help`` imports every
+  command module to show its short help, but those modules load none of their
+  dependencies until a command body runs. As a result, ``--help`` and
+  ``--version`` load nothing beyond the standard library and *Click*.
 
 Creating a command therefore takes two steps. First, place a module exposing
-a ``click.Command`` under ``app/cli/commands/``. For example,
+a ``click.Command`` under ``app/cli/commands/``, and import with ``lazy``
+everything that only the command body uses. For example,
 ``app/cli/commands/healthcheck.py`` reuses the lifespan and the decorators
 below::
 
@@ -594,7 +598,7 @@ below::
         configure,
         run_async,
     )
-    from {{ cookiecutter.repo_name }}.app.runtime import app_lifespan
+    lazy from {{ cookiecutter.repo_name }}.app.runtime import app_lifespan
 
 
     @click.command("healthcheck", help="Verify the database connection.")
@@ -620,9 +624,12 @@ dotted path of that object::
         }
     )
 
-The entry is verified to be a ``click.Command`` when it is loaded, and its
-module is imported only when ``{{ cookiecutter.service_name }} healthcheck`` is
-invoked.
+The entry is verified to be a ``click.Command`` when it is loaded. Its module
+is imported when ``{{ cookiecutter.service_name }} healthcheck`` is invoked or
+the group's help is shown, and its dependencies only when the command runs. A
+unit test fails when the group's ``--help`` or ``--version`` loads a
+third-party package other than *Click*, which detects an import on the startup
+path that lacks the ``lazy`` keyword.
 
 Helper decorators
 ^^^^^^^^^^^^^^^^^
@@ -874,7 +881,7 @@ The instructions keep the context that every session pays for small:
     enforce on their own;
   - ``testing.md`` - test layout, running tests, fixtures, and helpers;
   - ``workflows.md`` - environment setup, quality checks, dependency
-    management, and builds;
+    management, builds, and execution plans;
   - ``infrastructure.md`` - the Docker image, the Compose stack, and their
     targets.
 
@@ -1008,3 +1015,124 @@ before it finishes, leaving services that were already running untouched.
   specific problem, or extends it to code that no test at ``path`` exercises
   yet. Without such instructions, the skill lists that code as a follow-up,
   with the ``create`` invocation that would cover it.
+
+Planning and Implementing Changes (``develop``)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Overview**
+
+The ``develop`` skill carries a substantial change from requirements to
+working, documented code in three stages: planning, implementation, and
+optional testing. Each stage starts only on the user's explicit approval. The
+skill suits new projects, new features, ports from another codebase,
+language, or platform, imports of external functionality, reimplementations,
+and integrations between existing systems. Like ``update-tests``, it assumes
+no language, framework, or layout and learns them from the project. Do not use
+it to fix a single defect, make a small edit, refactor without changing
+behavior, or work only on tests.
+
+**Usage**
+
+Start the agent in the project root and invoke the skill with an optional plan
+path and a task::
+
+    [plan-path] <task>
+
+In *Claude Code*, type ``/develop`` followed by the arguments; in *Codex*,
+mention ``$develop`` in the message. The skill runs only when invoked by name;
+neither agent selects it on its own, and an ordinary request does not start the
+staged process.
+
+For example::
+
+    # Plan a new feature; the plan goes to docs/exec-plans/active/.
+    /develop add a migrate command that applies database schema migrations
+
+    # Port behavior from another codebase.
+    /develop port the retry policy of ../legacy-worker into the runtime
+
+    # Keep the plan at a chosen path, then resume it in a later session.
+    /develop docs/exec-plans/active/2026-11-12-health.md add a health command
+    /develop docs/exec-plans/active/2026-11-12-health.md
+
+    # In Codex, integrate an external system.
+    $develop integrate the Redis cache from the Compose stack into the runtime
+
+The skill restates the task, the plan location, and the starting stage before
+doing any work, and ends each stage with a report.
+
+**Stages and approval**
+
+1. *Planning.* The skill studies the project, pins down the requirements, and
+   designs the change. It uses a planning skill, `brainstorm`_ by default, and
+   the agent's plan mode when they are available. It presents an execution
+   plan and stops; nothing in the project changes before the plan is
+   approved.
+
+2. *Implementation.* After approval, the skill saves the plan, records a
+   baseline of the checks and tests, and implements the plan milestone by
+   milestone, keeping the plan current. A significant deviation, such as a
+   changed requirement, interface, or dependency, waits for approval.
+   Existing tests that an approved behavior change invalidates are updated in
+   this stage, without weakening the coverage of unchanged behavior; new
+   tests are not written. The stage ends with a report and the question
+   whether to proceed with testing.
+
+3. *Testing (optional).* Only when the user agrees, the skill creates or
+   updates the tests through ``update-tests``, one full invocation per
+   approved target. The user may approve all proposed targets or a subset;
+   the targets declined or left out are recorded as follow-ups in the plan
+   and the tech-debt tracker.
+
+Approval is never implied. Silence, a question, or a saved plan status does
+not count, and a plan resumed in a new session, or changed in substance since
+its approval, is presented for approval again. In a non-interactive run, the
+skill stops after planning: it saves the draft plan where writes are permitted
+and otherwise returns it in its final message.
+
+**Arguments**
+
+* ``plan-path`` (optional) - the execution plan, relative to the working
+  directory. An existing plan is resumed. A path that does not exist yet names
+  the new plan file: the skill asks before using one whose parent directory
+  is missing, and points out a location outside ``docs/exec-plans/`` before
+  approval. Without a plan path, the plan goes to ``docs/exec-plans/active/``.
+
+* ``task`` - free text that states the goal or points to the requirements,
+  such as a specification, an issue, or the code to port. It may be omitted
+  when the plan path resumes a plan.
+
+**Execution plans**
+
+Plans follow OpenAI's ExecPlans_ methodology: each is a living,
+self-contained document from which a later session can finish the work, with
+a progress log, a record of discoveries, a decision log, and a retrospective.
+The skill keeps them in the layout described in `Harness engineering`_::
+
+    docs/exec-plans/
+        active/                 plans in progress
+        completed/              completed and cancelled plans
+        tech-debt-tracker.md    deferred work and known shortcuts
+
+A plan's file name is its creation date in ISO 8601 form followed by a short
+kebab-case description, such as ``2026-11-12-health-command.md``. Every date
+and time in the plans and the tracker is in UTC. A small change without design
+decisions gets a lightweight plan that is approved but not saved, unless a
+plan path is given. Project guidance, such as ``AGENTS.md``, may prescribe
+another location.
+
+**Development standards**
+
+The skill holds the implementation to built-in standards for completeness,
+correctness and reliability, security, simplicity, maintainability,
+testability, and documentation, and checks them itself before it reports the
+implementation as complete. The standards turn review criteria into
+development rules: requirements traced to code and wired end to end, errors
+and resources handled on every path, input validated and secrets kept out of
+code and logs, the direct solution preferred over speculative abstraction,
+and user documentation, agent instructions, and the plan updated in the same
+change. Test quality remains the responsibility of ``update-tests``.
+
+.. _`brainstorm`: https://github.com/umputun/cc-thingz#brainstorm
+.. _`ExecPlans`: https://developers.openai.com/cookbook/articles/codex_exec_plans
+.. _`Harness engineering`: https://openai.com/index/harness-engineering/

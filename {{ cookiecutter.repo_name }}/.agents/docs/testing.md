@@ -72,7 +72,7 @@ to look.
 | Location | Provides |
 | --- | --- |
 | `tests/conftest.py` | The `slow` and `requires_db` markers, the `--skip-slow` and `--skip-db` options, and `rng` |
-| `tests/main/conftest.py` | `reset_logging_state` (automatic), `cap_json_logs`, `make_fake_stream`, and the database URL fixtures |
+| `tests/main/conftest.py` | `reset_logging_state` and `_isolate_settings` (automatic), `valid_environment`, `cap_json_logs`, `make_fake_stream`, and the database URL fixtures |
 | `tests/main/app/db/conftest.py` | `make_fake_sessionmaker`, with fake session and transaction objects |
 | `tests/system/conftest.py` | `app_logging` (automatic), `database_url`, `database_schema`, `database_engine`, `database_sessionmaker`, `items_table` |
 | `tests/utils.py` | `fail_without_traceback`, `parse_json_lines`, `assert_log_event`, `assert_log_exception` |
@@ -89,11 +89,13 @@ to look.
 - **Unmet prerequisites.** Call `fail_without_traceback(reason)` when an external
   prerequisite is missing; a traceback adds nothing there.
 - **Settings isolation.** A test that builds `Settings` or calls `get_settings()` must
-  not see the developer's environment, `.env.local`, or a cached instance. Follow the
-  `_isolate_settings` and `valid_environment` fixtures in
-  `tests/main/app/core/test_config.py`. When a second module needs a fixture, move it
-  to the nearest shared `conftest.py`; Pylint reports a copied block as
-  `duplicate-code`.
+  not see the developer's environment, `.env.local`, or a cached instance. Around
+  every unit test, the automatic `_isolate_settings` fixture removes the variable of
+  each `Settings` field and `{{ cookiecutter.env_prefix }}ENV_FILE`, and clears the
+  cached instance. Request `valid_environment` for a valid database URL and an empty
+  environment file.
+- **Shared fixtures.** When a second module needs a fixture, move it to the nearest
+  shared `conftest.py`; Pylint reports a copied block as `duplicate-code`.
 
 ## Conventions
 
