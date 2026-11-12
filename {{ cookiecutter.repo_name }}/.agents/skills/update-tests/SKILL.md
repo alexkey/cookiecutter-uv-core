@@ -145,6 +145,14 @@ they never relax determinism, isolation, or honest verification.
    example by asking for a test that pins buggy behavior or for a sleep that
    hides a race, explain the risk and propose a compliant alternative, then
    follow the user's decision.
+9. **Leave the environment as you found it.** Start a service that the tests
+   need, such as a database, only with the user's approval and only through
+   the means the project provides for it, such as a task-runner target or a
+   service definition in the repository. When asking, name the command and
+   what it starts; record what you start. Before the run ends, including a
+   run that stops early, stop and remove what you started, together with the
+   resources it created, unless the user asks to keep it running. Leave
+   anything that was running before untouched.
 
 ## Workflow
 
@@ -179,20 +187,23 @@ evidence in the project, and record where each answer came from.
    project.
 7. **Capabilities.** What can the installed tools do: list tests, select a
    subset, repeat tests, randomize order reproducibly, run in parallel,
-   measure coverage, report durations, detect leaks or races? Establish each
-   capability from the tools themselves: their help output, their
-   configuration, the extensions the project has installed, or a
-   documentation tool when the host offers one.
+   measure coverage, inject defects for mutation testing, report durations,
+   detect leaks or races? Establish each capability from the tools
+   themselves: their help output, their configuration, the extensions the
+   project has installed, or a documentation tool when the host offers one.
 8. **Code under test.** In `update` mode, which production code do the tests
-   in `path` exercise? In `create` mode, which code or behavior do the
-   instructions name, and where does it live?
+   in `path` exercise, and which code do the instructions name? Which code
+   does the project's layout assign to `path` that no test there exercises?
+   In `create` mode, which code or behavior do the instructions name, and
+   where does it live?
 
 Every answer cites a file or the output of a command. When an answer cannot be
 established, record it as unknown together with a fallback; do not fill the gap
 from memory. Typical fallbacks: repeat tests by rerunning the command in a
 loop; without order randomization, run each test alone and run the files or
 cases in reverse; without a coverage tool, reason from the code paths and from
-deliberately broken code; without a duration report, time the command.
+deliberately broken code; without mutation tooling, introduce defects by hand;
+without a duration report, time the command.
 
 Write the profile as a short block, each line ending with its evidence:
 
@@ -230,12 +241,16 @@ Then check `path` against the profile:
 
 ### 2. Record a baseline
 
-Run the tests in `path` once before editing, through the entry points from the
-profile. Record failures, skips, and duration, so the final report separates
-pre-existing problems from your changes. If the tests cannot run, for example
-because a required service is unavailable or the environment is broken, record
-what is missing, continue with static analysis, and treat verification as
-partial.
+Before editing, run the tests in `path` once, and the project's linters,
+formatters, and type checks, through the entry points from the profile. Record
+failures, skips, findings, and duration, so the final report separates
+pre-existing problems from your changes. When the tests need a service that is
+not running, ask to start it as ground rule 9 describes. If the tests still
+cannot run, for example because the project provides no means to start a
+required service, the start is declined, no one can answer, or the environment
+is broken, record what is missing, continue with static analysis, and treat
+verification as partial. For a service left unstarted, name the command that
+would start it, so the report can propose it.
 
 ### 3a. Analyze for `create`
 
@@ -267,7 +282,11 @@ partial.
 ### 3b. Analyze for `update`
 
 1. **Map tests to code.** Pair each test file in `path` with the code it
-   exercises, and read both.
+   exercises, and read both. Gaps in that code, and in code the instructions
+   name, are in scope. Code that the layout assigns to `path` but no test
+   there exercises is in scope only when the instructions name it or ask for
+   broader coverage; otherwise list it in the follow-ups with the `create`
+   invocation that would cover it.
 2. **Diagnose.** Review each test against the catalog in
    `references/test-smells.md`: flakiness and nondeterminism, redundancy,
    coverage gaps, weak assertions, isolation and structure, test doubles,
@@ -278,7 +297,8 @@ partial.
      to catch tests that never run.
    - Run in randomized order and repeat suspect tests, to confirm order
      dependence and flakiness.
-   - Measure coverage of the code under test, to locate untested branches.
+   - Measure coverage of the code under test, to locate untested branches; then
+     break covered code as in step 5, to find behavior no assertion depends on.
    - Report durations, to find slow tests.
 
    Mark each finding as confirmed by evidence or inferred from reading.
@@ -322,12 +342,15 @@ Share the plan together with the profile. Then:
 - Keep the intent of every rewritten test: it verifies the same behavior, more
   precisely or more reliably, unless the plan says otherwise.
 - Prove that the important tests can fail. For each key new or rewritten test,
-  temporarily introduce a small defect in the code under test, such as an
-  inverted condition or an off-by-one boundary, and confirm that the test
-  fails with a clear message. A test that cannot fail protects nothing. The
-  defect is never part of the change: revert it at once, and confirm with the
-  project's version control, or against a saved copy, that the code under
-  test is unchanged.
+  confirm that it passes on the unmodified code, then temporarily introduce a
+  small defect in the code under test, such as an inverted condition or an
+  off-by-one boundary. The test must fail with a clear message from an
+  assertion about the broken behavior; a failure in setup, collection, or
+  unrelated code proves nothing, and neither does a test that failed before
+  the defect. A test that cannot fail protects nothing. The defect is never
+  part of the change: revert it at once, confirm with the project's version
+  control, or against a saved copy, that the code under test is unchanged,
+  and rerun the test to see it pass.
 
 ### 6. Verify
 
@@ -337,85 +360,43 @@ Use the entry points and capabilities from the profile, in this order:
 2. Run everything in `path` and compare the result with the baseline: no new
    failures and no unintended new skips. When the project's entry point also
    runs tests outside `path` at little cost, run it too, because a change
-   inside `path` can break tests that share its helpers.
+   inside `path` can break tests that share its helpers. Compare the total
+   runtime of the same command as well: duration reports miss a small cost
+   repeated in many tests, such as an expensive test double or setup step.
+   Trace growth beyond run-to-run variation to its cause, and remove the
+   cause unless the coverage it buys justifies it.
 3. Check the new and changed tests for determinism: run them repeatedly and in
    randomized order, using the capabilities from the profile or their
    fallbacks. Ten repetitions suit fast tests; tests that involve concurrency,
    time, or I/O deserve more.
-4. Run the project's linters, formatters, and type checks on the changed
-   files, and fix findings in your changes.
+4. Run the project's linters, formatters, and type checks through its own
+   entry points, over the whole scope those entry points cover, not only on
+   the changed files. Some checks relate files to each other, such as
+   duplicated code across modules or type errors at call sites, and a run
+   limited to the changed files misses them. Prefer modes that report without
+   rewriting files. Compare the findings with the baseline, and fix every
+   finding your changes introduce, including one reported in a file you did
+   not touch: resolve it inside `path`, or propose the change outside it.
 5. Review the working tree: every changed file lies inside `path`, and no
    stray artifacts remain, such as coverage data, temporary files, or
    unintentionally updated snapshots.
 6. If coverage was measured during analysis, measure it again for comparison.
+7. Stop and remove the services and background processes you started, as
+   ground rule 9 requires, and confirm that none of them remain.
 
 When a check fails, fix the cause and rerun it. When a check cannot run, state
 exactly what was not verified and why. Report only results you observed.
 
 ### 7. Report
 
-Use the template for the mode, omitting sections that do not apply. Keep it
+Deliver the report as the last message, once all work has finished, and make
+it self-contained: a reader who sees only the report must find every section
+in it. Restate content that earlier messages already showed, instead of
+referring back to it with phrases such as "as given above".
+
+Follow the template for the mode in `references/report-templates.md`, omitting
+sections that do not apply; the project profile always applies. Keep it
 factual and specific: name files, tests, commands, and numbers.
-
-For `create`:
-
-```markdown
-## Request
-Mode, path, target behavior, and assumptions.
-
-## Project profile
-The profile from step 1, each line with its evidence.
-
-## Existing coverage
-What was tested before this change.
-
-## Tests added
-Per file: each test and the behavior it verifies.
-
-## Verification
-Commands and results: baseline, final run, repetition and random-order runs,
-linters, and failure checks.
-
-## Coverage summary
-Behaviors now covered, and known gaps with reasons.
-
-## Proposed changes outside path
-Each with the exact change and its reason. None is applied without approval.
-
-## Follow-ups
-Defects found, deferred changes, and issues outside the path.
-```
-
-For `update`:
-
-```markdown
-## Request
-Mode, path, focus, and assumptions.
-
-## Project profile
-The profile from step 1, each line with its evidence.
-
-## Findings
-Grouped by category; each marked confirmed or inferred, with evidence.
-
-## Changes
-Tests removed, merged, rewritten, and added, plus fixture and file changes,
-each with its reason.
-
-## Verification
-Commands and results: baseline, final run, repetition and random-order runs,
-linters, and failure checks.
-
-## Improvements
-Test count, runtime, coverage, and stability before and after, measured where
-possible.
-
-## Proposed changes outside path
-Each with the exact change and its reason. None is applied without approval.
-
-## Follow-ups
-Defects found, deferred changes, and issues outside the path.
-```
 
 ## Test quality standards
 

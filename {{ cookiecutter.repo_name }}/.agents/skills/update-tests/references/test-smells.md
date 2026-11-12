@@ -67,7 +67,10 @@ coverage tooling is available, compare reports before and after.
 
 ## Coverage gaps
 
-Look for behaviors no test verifies, prioritized by risk:
+In `update` mode, the code under test is the scope that step 3b of the
+workflow defines: code that no test in `path` exercises at all is a follow-up
+there, unless the instructions bring it into scope. Within the code under test, look
+for behaviors no test verifies, prioritized by risk:
 
 - public functions, endpoints, commands, or events without tests;
 - error paths: exceptions raised and handled, error responses, rollbacks,
@@ -85,6 +88,18 @@ Look for behaviors no test verifies, prioritized by risk:
 Coverage percentages are a map, not a goal: a covered line is not a verified
 behavior if no assertion depends on it. Use coverage reports to find unexecuted
 branches, then decide by risk which deserve tests.
+
+High coverage does not show that the covered code is verified, so test that
+separately: break the covered code in small ways and run the tests. Typical
+defects invert a condition, shift a boundary by one, drop a side effect or an
+error check, or return a constant. A defect that every test survives marks a
+coverage gap, or a weak assertion, even at full line coverage; record it as a
+confirmed finding, together with the defect that exposed it. Concentrate the
+defects on the riskiest code rather than spreading them evenly, and keep the
+count proportionate to the request. When the profile lists mutation tooling, it
+can generate and run the defects; otherwise introduce them by hand. Either
+way, follow the procedure for proving that tests can fail: confirm the tests
+pass first, revert each defect at once, and confirm the code is unchanged.
 
 ## Weak and over-specified assertions
 
@@ -168,10 +183,14 @@ spies.
 - network or service calls where a boundary double suffices;
 - integration or end-to-end tests that verify logic a unit test could;
 - expensive setup repeated per test without need;
+- test doubles generated per test from a large interface where a minimal
+  double suffices;
 - oversized datasets where a few representative cases suffice;
 - serial-only suites caused by shared state, blocking parallel execution.
 
-Measure with the runner's duration report before and after changes.
+Measure with the runner's duration report before and after changes, and
+compare the total runtime as well. A small cost repeated in every test stays
+below the notice of a duration report and shows only in the total.
 
 ## Obsolete, invalid, and uncollected tests
 

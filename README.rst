@@ -868,7 +868,10 @@ For example::
     $update-tests update tests/main/test_logging.py focus on order dependence
 
 The skill restates the resolved arguments, presents a plan before editing, and
-ends with a report of its changes and how it verified them.
+ends with a report of its changes and how it verified them. When the tests need
+a service that is not running, such as PostgreSQL for the system tests, the
+skill asks before starting it through the project's own means and stops it
+before it finishes, leaving services that were already running untouched.
 
 **Arguments**
 
@@ -896,4 +899,6 @@ ends with a report of its changes and how it verified them.
   it names the code or behavior to test; without it, the skill extends the
   existing tests at ``path`` or, if there are none, asks what to test. In
   ``update`` mode, it narrows or directs the work, for example toward a
-  specific problem.
+  specific problem, or extends it to code that no test at ``path`` exercises
+  yet. Without such instructions, the skill lists that code as a follow-up,
+  with the ``create`` invocation that would cover it.
