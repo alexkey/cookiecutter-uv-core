@@ -1,51 +1,51 @@
 # {{ cookiecutter.name }}
 
-`{{ cookiecutter.service_name }}` is a Python service. Its importable package,
-`{{ cookiecutter.repo_name }}`, uses the `src` layout. uv manages the interpreter, the
-virtual environment, and the lockfile, and the Makefile is the entry point for every
-development task. The package provides typed settings (pydantic-settings), structured
-logging (structlog), asynchronous SQLAlchemy access to PostgreSQL (asyncpg), and a
-Click command-line interface. `docker/` holds the images and a Compose stack with
-PostgreSQL and Redis.
+`{{ cookiecutter.service_name }}` is a Python service. Its importable package
+`{{ cookiecutter.repo_name }}` uses the `src` layout. uv manages the interpreter, the
+virtual environment, and the lockfile. The Makefile is the entry point for every
+development task. The package provides typed settings with pydantic-settings,
+structured logging with structlog, asynchronous SQLAlchemy access to PostgreSQL through
+asyncpg, and a Click command-line interface. `docker/` holds the Dockerfiles and a
+Compose stack with PostgreSQL and Redis.
 
 How to read these instructions:
 
 - Sections titled **Rules** are mandatory, here and in the reference files. Follow
   them unless the user overrides one explicitly for the task at hand.
-- Everything else is context for making decisions. When it disagrees with the code or
-  a configuration file, trust the code and correct the instructions in the same
+- Everything else is context for making decisions. Trust the code or the configuration
+  file where the context disagrees with it, and correct the instructions in the same
   change.
 
 ## Rules
 
-1. Run Python and the tools installed in the project environment, such as Pytest,
-   Ruff, ty, Mypy, Pylint, and Deptry, through a `make` target, or through `uv run`
-   where no target fits. Do not call `python`, `pip`, or those tools directly: the
-   targets carry the project's paths and options, and they run each tool at its
-   locked version. Ordinary shell commands, such as `git` and `rg`, are not covered.
-2. Before reporting a code change as complete, run `make format`, `make lint`, and
-   `make test`, and resolve every finding. `make lint` fails on any Pylint message.
-   After changing imports or dependencies, also run `make check-deps`; the change
-   must not add a finding (`.agents/docs/workflows.md` explains the findings that
-   predate it). Report every check that was not run, with the reason.
+1. Run Python and the tools installed in the project environment through a `make`
+   target, or through `uv run` where no target fits. These tools include Pytest, Ruff,
+   ty, Mypy, Pylint, and Deptry. Do not call `python`, `pip`, or those tools directly,
+   because the targets carry the project's paths and options and run each tool at its
+   locked version. The rule does not cover ordinary shell commands such as `git` and
+   `rg`.
+2. Run `make format`, `make lint`, and `make test` before reporting a code change as
+   complete, and resolve every finding. `make lint` fails on any Pylint message. Also
+   run `make check-deps` after changing imports or dependencies. The change must not
+   add a finding. `.agents/docs/workflows.md` explains the findings that predate it.
+   Report every check that was not run, with the reason.
 3. Change dependencies only in `pyproject.toml`, then run `make requirements` and
    `make install`. Do not edit `uv.lock` by hand and do not install packages into the
    environment by any other means.
 4. Do not run `make docker-clean` or `make mostlyclean` unless the user names that
-   target. `docker-clean` removes every container, image, and volume on the host, not
-   only this project's. `mostlyclean` deletes the virtual environment and the entire
-   uv cache.
-5. Treat the database URL (`{{ cookiecutter.env_prefix }}DATABASE_URL`) as a secret.
+   target. `docker-clean` removes every container and image on the host, not only this
+   project's, and prunes unused networks, the build cache, and anonymous volumes.
+   `mostlyclean` deletes the virtual environment and the entire uv cache.
+5. Treat the database URL in `{{ cookiecutter.env_prefix }}DATABASE_URL` as a secret.
    Keep it wrapped in `SecretStr`, and never print it, log it, or quote it in an
    exception message. Do not commit `.env` or `.env.*` files.
 6. Keep local variables out of logs and shared test output, because they can hold
-   secrets: do not enable `show_locals` in logging, and do not pass `--showlocals`,
+   secrets. Do not enable `show_locals` in logging. Do not pass `--showlocals`,
    `--tb=long`, or `--full-trace` to Pytest when the output leaves the machine.
-7. Before working in an area listed under [Reference](#reference), read its file and
-   follow its Rules section.
-8. When a change alters a command, path, rule, or design decision that these
-   instructions describe, update the instructions in the same change. Edit
-   `AGENTS.md`, never `CLAUDE.md`, which is a symlink to it.
+7. Read the file of an area listed under [Reference](#reference) before working in
+   that area, and follow its Rules section.
+8. Update these instructions in the same change that alters a command, path, rule, or
+   design decision they describe. Edit `AGENTS.md`, never its symlink `CLAUDE.md`.
 
 ## Commands
 
@@ -64,20 +64,21 @@ How to read these instructions:
 | Show the CLI help | `uv run {{ cookiecutter.service_name }} --help` |
 
 - The analysis, formatting, and test targets need the virtual environment, `uv.lock`,
-  and the installed tools. When one fails with `ERROR: The virtual environment is
-  missing` or `ERROR: The project lockfile does not exist`, run the setup commands.
-  `make venv` fails when `.venv` already exists.
-- The targets run tools with `uv run --locked`, which fails when `uv.lock` no longer
-  matches `pyproject.toml`. Run `make requirements` to update the lockfile.
+  and the installed tools. Run the setup commands when one fails with
+  `ERROR: The virtual environment is missing` or
+  `ERROR: The project lockfile does not exist`. `make venv` fails when `.venv` already
+  exists.
+- The targets run tools with `uv run --locked`, which fails when `uv.lock` does not
+  match `pyproject.toml`. Run `make requirements` to update the lockfile.
 - `make docker-compose`, `make docker-logs`, `make docker-run`, and
-  `make docker-shell` stay in the foreground or need a terminal; read
+  `make docker-shell` stay in the foreground or need a terminal. Read
   `.agents/docs/infrastructure.md` before running them.
 
 ## Layout
 
 ```text
 src/{{ cookiecutter.repo_name }}/
-    __init__.py          public API: get_settings, get_logger, setup_logging
+    __init__.py          public API: lazy re-exports of the settings and logging API
     logging.py           logging setup
     app/core/config.py   Settings and get_settings()
     app/db/database.py   engine and session helpers

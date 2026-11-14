@@ -12,13 +12,13 @@ use asynchronous SQLAlchemy over the `postgresql+asyncpg` driver.
 2. Run each unit of work inside one `async with create_session(session_maker)` block.
    The block is a single transaction: it commits on a clean exit, rolls back on any
    exception, and always closes the session. Do not call `session.begin()` or
-   `session.commit()` inside the block; raise an exception to roll back.
+   `session.commit()` inside the block. Raise an exception to roll back.
 3. Do not rely on attribute access to load data after a commit or to load a
    relationship. Fetch server-generated values with
    `await session.refresh(obj, ["attr"])` and load relationships eagerly, for example
    with `selectinload()`.
-4. Pass the database URL as the `SecretStr` from `get_settings().DATABASE_URL`. Do not
-   unwrap it except where a driver requires a plain string.
+4. Pass the database URL as the `SecretStr` from `get_settings().DATABASE_URL`. Unwrap
+   it only where a driver requires a plain string.
 
 ## Session lifecycle
 
@@ -30,18 +30,18 @@ async with app_lifespan() as app_state:
         await session.execute(...)
 ```
 
-- `create_session()` re-raises database errors and unexpected errors after the
-  rollback (`raise_on_exc=True`). With `raise_on_exc=False` it logs them and
-  suppresses them.
-- `asyncio.CancelledError` always rolls back and propagates; do not catch it around
+- With the default `raise_on_exc=True`, `create_session()` re-raises database errors
+  and unexpected errors after the rollback. With `raise_on_exc=False`, it logs them
+  and suppresses them.
+- `asyncio.CancelledError` always rolls back and propagates. Do not catch it around
   the block.
 - `context` labels the session in log records. `verbose=True` logs each lifecycle
   step.
 
 ## Engine lifecycle
 
-Code outside the lifespan, such as a script or a test, follows the same order that
-`app_lifespan()` applies:
+Follow the order that `app_lifespan()` applies in code outside the lifespan, such as a
+script or a test:
 
 - `create_engine(url)` returns `None` when creation fails and logs the error with the
   password masked. Pass `raise_on_exc=True` to fail fast instead.
@@ -53,29 +53,29 @@ Code outside the lifespan, such as a script or a test, follows the same order th
 
 `DEFAULT_ASYNC_ENGINE_PARAMS` and `DEFAULT_ASYNC_SESSION_PARAMS` in `database.py` hold
 the active values. Override any of them with keyword arguments to `create_engine()`
-and `create_sessionmaker()`; do not edit the defaults for a single caller.
+and `create_sessionmaker()`. Do not edit the defaults for a single caller.
 
 - **`expire_on_commit=False`.** With expiry enabled, the first attribute access after
-  a commit triggers an implicit refresh query. Under asyncio that I/O can run outside
+  a commit triggers an implicit refresh query. Under asyncio, that I/O can run outside
   SQLAlchemy's async bridge and raise `MissingGreenlet`. The cost is that objects are
-  not re-fetched after a commit. A server-generated value (`server_default`,
-  `server_onupdate`, `Computed`) is present only when SQLAlchemy populated it during
-  the flush, typically through `RETURNING`; otherwise it stays expired or stale. Rule
-  3 follows from this.
+  not re-fetched after a commit. Server-generated values come from `server_default`,
+  `server_onupdate`, and `Computed`. Such a value is present only when SQLAlchemy
+  populated it during the flush, typically through `RETURNING`. Otherwise, it stays
+  expired or stale. Rule 3 follows from this.
 - **`pool_pre_ping=True`** checks a connection when it leaves the pool and replaces
   one that was dropped while idle.
 - **`pool_use_lifo=True`** keeps traffic on a small set of connections, which lets the
   surplus ones idle out on the server during quiet periods.
 - **`pool_recycle=1800`** caps connection age. Keep it below the shortest idle timeout
   of any component in the connection path, such as PgBouncer, a load balancer, or
-  NAT. Lower it, for example to 300 seconds, when such a component closes idle
-  connections sooner.
+  NAT. A component that closes idle connections sooner requires a lower value, such
+  as 300 seconds.
 - **`pool_reset_on_return="rollback"`** releases locks and transaction resources when
   a connection returns to the pool.
 
-A `poolclass` outside the `QueuePool` hierarchy, such as `NullPool`, rejects the
-queue-pool options. `create_engine()` drops the queue-pool defaults for such a pool; a
-queue-pool option passed explicitly still raises `TypeError`.
+Pool classes outside the `QueuePool` hierarchy reject the queue-pool options.
+`NullPool` is one of them. `create_engine()` drops the queue-pool defaults for such a
+pool. A queue-pool option passed explicitly still raises `TypeError`.
 
 ## Related
 
