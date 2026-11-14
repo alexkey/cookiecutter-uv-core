@@ -8,10 +8,10 @@ import pytest
 
 _PACKAGE = "{{ cookiecutter.repo_name }}"
 
-# Runs the CLI with the arguments that follow and prints, as the last line of its
-# output, the top-level names of the modules outside the standard library that the run
-# loaded. Modules loaded at interpreter startup, such as those that a `.pth` file
-# imports, do not count: the CLI does not control them.
+# Runs the CLI with the probe's command-line arguments. The last line of the output is
+# a JSON list of the top-level names of the modules outside the standard library that
+# the run loaded. Modules loaded at interpreter startup do not count, because the CLI
+# does not control them. A `.pth` file can import such modules.
 _STARTUP_PROBE = """
 import json
 import sys
@@ -54,10 +54,10 @@ for module in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
 def _run_python(code: str, *args: str) -> subprocess.CompletedProcess[str]:
     """Runs `code` in a fresh interpreter.
 
-    The test process has already imported the modules that the probes check for; only a
-    new interpreter shows what a CLI invocation loads. `-I` ignores `PYTHON*`
-    environment variables, such as `PYTHON_LAZY_IMPORTS`, that change how lazy imports
-    behave.
+    The test process has already imported the modules that the probes check for. Only a
+    new interpreter shows what a CLI invocation loads. `-I` ignores the `PYTHON*`
+    environment variables that change how lazy imports behave, such as
+    `PYTHON_LAZY_IMPORTS`.
     """
     return subprocess.run(
         [sys.executable, "-I", "-c", code, *args],

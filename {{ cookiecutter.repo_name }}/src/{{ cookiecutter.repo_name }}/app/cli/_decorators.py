@@ -48,7 +48,8 @@ def announce[**P, R](func: Callable[P, R]) -> Callable[P, R]:
 
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        # Create the logger per call: CLI command resolution imports this module.
+        # A module-level logger would load structlog whenever the group's `--help`
+        # imports this module.
         logger = get_logger(__name__)
 
         settings = get_settings()

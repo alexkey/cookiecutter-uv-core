@@ -144,9 +144,9 @@ def _console_renderer(
         stream: Stream that receives log output; colors require it to be a TTY.
         enable_colors: If `True`, colorize output, as `_should_use_colors()` permits.
         enable_rich: If `True`, render tracebacks with Rich; otherwise, in the plain
-            standard-library format. Rich can take seconds to render a long traceback,
-            such as a database error, and blocks the thread that logs, which stalls an
-            event loop.
+            standard-library format. Rich can take seconds to render a long traceback
+            and blocks the thread that logs, which stalls an event loop. Database errors
+            produce such tracebacks.
     """
     colors = _should_use_colors(stream, enable_colors=enable_colors)
 
