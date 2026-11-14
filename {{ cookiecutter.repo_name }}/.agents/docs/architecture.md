@@ -1,7 +1,7 @@
 # Architecture
 
 Read this before adding or changing a CLI command, a setting, logging behavior, or a
-resource shared across the application. Database access is covered in `database.md`.
+resource shared across the application. `database.md` covers database access.
 
 Paths are relative to `src/{{ cookiecutter.repo_name }}/` unless they start with a
 top-level directory such as `tests/` or `docker/`.
@@ -11,21 +11,22 @@ top-level directory such as `tests/` or `docker/`.
 1. Register every subcommand in `_SUBCOMMANDS` in `app/cli/__init__.py`, keyed by the
    command name and mapped to the dotted path of its `click.Command`. Do not import a
    command module from `app/cli/__init__.py`.
-2. Keep the modules on the CLI's startup path cheap to import: the package root
-   `__init__.py`, `app/__init__.py`, and every module under `app/cli/`, including each
-   command module, which the group's `--help` imports to show the command's short
-   help. In them, import with `lazy` every name that only function bodies use. Use a
-   regular import only for a name used while the module loads, such as a decorator,
-   and only when that import is cheap. Make no call into settings, logging, or the
-   database at module level. `tests/main/app/cli/test_cli.py` fails when `--help` or
-   `--version` loads a third-party package other than Click.
+2. Keep the modules on the CLI's startup path cheap to import. These are the package
+   root `__init__.py`, `app/__init__.py`, and every module under `app/cli/`. Each
+   command module belongs to the startup path, because the group's `--help` imports it
+   to show the command's short help. In these modules, import with `lazy` every name
+   that only function bodies use. Use a regular import only for a cheap import of a
+   name that the module uses while it loads, such as a decorator. Make no call into
+   settings, logging, or the database at module level.
+   `tests/main/app/cli/test_cli.py` fails when `--help` or `--version` loads a
+   third-party package other than Click.
 3. Stack the command decorators directly below `@click.command` in this order:
    `@configure`, `@announce`, `@run_async`.
-4. Acquire shared resources only through `app_lifespan()`. A command does not create
-   or dispose the database engine or the session factory itself.
+4. Acquire shared resources only through `app_lifespan()`. Do not create or dispose
+   the database engine or the session factory in a command.
 5. Define settings only as fields of `Settings` in `app/core/config.py`, and read them
-   only through `get_settings()`. Application code does not read
-   `{{ cookiecutter.env_prefix }}*` environment variables on its own.
+   only through `get_settings()`. Do not read `{{ cookiecutter.env_prefix }}*`
+   environment variables directly in application code.
 6. Create loggers with `get_logger(__name__)`, and configure logging only through
    `setup_logging()`.
 
@@ -44,18 +45,17 @@ top-level directory such as `tests/` or `docker/`.
 | `app/cli/_lazy.py` | `LazyGroup`, which imports a subcommand only when it is resolved |
 | `app/cli/_decorators.py` | `configure`, `announce`, `run_async` |
 | `app/cli/commands/` | One module per subcommand |
-| `app/_exceptions.py` | Home of the application-layer exception hierarchy; holds no classes yet |
+| `app/_exceptions.py` | Application-layer exception hierarchy; empty in the generated project |
 
-`app/__init__.py` needs the distribution `{{ cookiecutter.service_name }}` to be
-installed, which `make install` does. The version comes from `[project].version` in
-`pyproject.toml`.
+`app/__init__.py` requires the installed distribution
+`{{ cookiecutter.service_name }}`, which `make install` provides. The version comes
+from `[project].version` in `pyproject.toml`.
 
 ## Startup flow
 
-1. The console script `{{ cookiecutter.service_name }}` (declared under
-   `[project.scripts]` in `pyproject.toml`) and
+1. The console script `{{ cookiecutter.service_name }}` and
    `python -m {{ cookiecutter.repo_name }}` both call `main()`, which runs the Click
-   group `cli`.
+   group `cli`. `[project.scripts]` in `pyproject.toml` declares the console script.
 2. `LazyGroup` resolves the subcommand name through `_SUBCOMMANDS` and imports only
    that command's module.
 3. `configure` resolves the settings and configures logging. Logging therefore uses
@@ -67,31 +67,31 @@ installed, which `make install` does. The version comes from `[project].version`
    whether the body returned or raised.
 
 The shipped `run` command is a stub: it enters the lifespan and does nothing else.
-The service's own behavior is added to it or as further subcommands.
+The service's own behavior goes into it or into further subcommands.
 
 ## Design decisions
 
 - **Lazy subcommands and lazy imports.** `LazyGroup` imports a command's module only
-  when the command is resolved, so running one command never imports another. The
-  group's `--help` resolves every command, because Click reads each short help from
-  the command object. Explicit lazy imports (PEP 810, Python 3.15) keep that cheap: a
-  `lazy` import binds the name at once and loads the module on first use, so a
-  command's dependencies load only when its body runs, and `--help` and `--version`
-  load nothing beyond the standard library and Click. A broken lazy import fails at
-  first use, not at import; `tests/main/app/cli/test_cli.py` imports every module
-  with lazy imports disabled to catch it. A registered path that does not name a
-  `click.Command` raises `TypeError` when the command is resolved.
-- **The lifespan owns shared resources.** Creating the engine and the session factory
-  once and disposing them once is a requirement of the database layer; the lifespan
-  enforces it for every command. Further shared resources are added by extending
-  `AppState`.
-- **Fail fast at startup.** When the engine cannot be created, the lifespan exits with
-  `EXIT_GENERAL_ERROR` instead of yielding a partially initialized state.
-- **Settings are a cached singleton.** `get_settings()` builds `Settings` once;
+  when the command is resolved. As a result, running one command never imports
+  another. The group's `--help` resolves every command, because Click reads each
+  short help from the command object. Explicit lazy imports keep that cheap. PEP 810
+  added them in Python 3.15: a `lazy` import binds the name at once and loads the
+  module on first use. A command's dependencies therefore load only when its body
+  runs, and `--help` and `--version` load nothing beyond the standard library and
+  Click. A broken lazy import fails at first use, not at import.
+  `tests/main/app/cli/test_cli.py` imports every module with lazy imports disabled to
+  catch it. A registered path that does not name a `click.Command` raises `TypeError`
+  when the command is resolved.
+- **The lifespan owns shared resources.** The database layer requires that the engine
+  and the session factory are created once and disposed once. The lifespan enforces
+  this for every command. Further shared resources extend `AppState`.
+- **Fail fast at startup.** The lifespan exits with `EXIT_GENERAL_ERROR` when the
+  engine cannot be created, instead of yielding a partially initialized state.
+- **Settings are a cached singleton.** `get_settings()` builds `Settings` once.
   `get_settings(reload=True)` rebuilds it from the current environment.
-- **Secrets stay masked.** The database URL is a `SecretStr`, validation errors hide
-  their input (`hide_input_in_errors`), validator messages never quote the URL, and
-  rendered tracebacks omit local variables.
+- **Secrets stay masked.** The database URL is a `SecretStr`, and validation errors
+  hide their input through `hide_input_in_errors`. Validator messages never quote the
+  URL, and rendered tracebacks omit local variables.
 
 ## Configuration
 
@@ -101,8 +101,8 @@ The service's own behavior is added to it or as further subcommands.
 - Values also come from an environment file: `.env.local` in the working directory by
   default, or the path in `{{ cookiecutter.env_prefix }}ENV_FILE`. Process environment
   variables take precedence over the file. An entry in the file that matches no field
-  is rejected. The file is ignored by Git.
-- An empty value is read as an empty string; it does not fall back to the field
+  is rejected. Git ignores `.env.local`.
+- An empty value is read as an empty string. It does not fall back to the field
   default.
 - `get_settings()` raises `pydantic.ValidationError` when a required setting is
   missing or a value is invalid.
@@ -115,20 +115,22 @@ The service's own behavior is added to it or as further subcommands.
 
 - `setup_logging(log_level, log_format, ...)` applies one format to records from
   structlog and from the standard library. Each call replaces the handler that the
-  previous call installed. Commands get this through `@configure`; any other entry
-  point calls it once before logging.
-- `log_format` is `console` (human-readable) or `json` (one object per line, UTC
-  timestamps, a fixed order for the leading keys). Colors apply to `console` output
-  on a TTY only and are suppressed when `NO_COLOR` is set.
+  previous call installed. Commands receive this configuration through `@configure`.
+  Call `setup_logging()` once before logging in any other entry point.
+- `log_format` is `console` or `json`. `console` output is human-readable. `json`
+  output has one object per line, UTC timestamps, and a fixed order for the leading
+  keys. Colors apply to `console` output on a TTY only and are suppressed when
+  `NO_COLOR` is set.
 - Reserve `console` for interactive use, and select `json` in real environments, such
   as a deployed service. Console rendering is synchronous and runs on the thread that
-  logs: a Rich traceback of a database error takes about 2 s, during which an event
-  loop serves nothing. For plain tracebacks, which render in milliseconds, pass
-  `enable_rich=False` to `_console_renderer()` in `setup_logging()`.
-- Define `logger = get_logger(__name__)` at module level, except in the modules on
-  the CLI's startup path (rule 2), which create the logger inside the function that
-  logs. Messages accept `%`-style positional arguments; pass context as keyword
-  arguments.
+  logs. A Rich traceback of a database error takes about 2 s, and an event loop on
+  that thread serves nothing in that time. Pass `enable_rich=False` to
+  `_console_renderer()` in `setup_logging()` to render plain tracebacks, which take
+  milliseconds.
+- Define `logger = get_logger(__name__)` at module level. The modules on the CLI's
+  startup path are the exception: rule 2 requires them to create the logger inside the
+  function that logs. Messages accept `%`-style positional arguments. Pass context as
+  keyword arguments.
 - Guard expensive log preparation with `is_level_enabled(logger)`, which checks the
   debug level by default.
 
@@ -137,7 +139,8 @@ The service's own behavior is added to it or as further subcommands.
 ### Add a subcommand
 
 1. Create `app/cli/commands/<name>.py` that exposes a `click.Command`, following
-   `app/cli/commands/run.py`. Import with `lazy` what only the body uses (rule 2):
+   `app/cli/commands/run.py`. Import with `lazy` what only the body uses, as rule 2
+   requires:
 
    ```python
    import click
@@ -163,13 +166,13 @@ The service's own behavior is added to it or as further subcommands.
 2. Add one entry to `_SUBCOMMANDS` in `app/cli/__init__.py`:
    `"healthcheck": "{{ cookiecutter.repo_name }}.app.cli.commands.healthcheck.healthcheck_cmd"`.
 3. Confirm the registration with
-   `uv run {{ cookiecutter.service_name }} healthcheck --help`, then run `make test`,
+   `uv run {{ cookiecutter.service_name }} healthcheck --help`. Then run `make test`,
    which fails when the new module makes `--help` load a third-party package.
 
 ### Add a setting
 
-1. Add a field to `Settings` with `Field(<default>, description=...)`; use `...` as the
-   default of a required setting.
+1. Add a field to `Settings` with `Field(<default>, description=...)`. Use `...` as
+   the default of a required setting.
 2. Validate with an `Annotated[..., AfterValidator(...)]` alias, as `LogLevel` and
    `DatabaseURL` do. Type a secret as `SecretStr`, and keep its value out of the
    validator's error messages.
@@ -185,4 +188,5 @@ A new setting therefore needs no change to the test fixtures.
 1. Add a key to the `AppState` typed mapping and describe it in the class docstring.
 2. Create the resource in `app_lifespan()` before the `yield`, and release it in the
    `finally` block.
-3. Read it in command bodies from the yielded state, as `session_maker` is read.
+3. Read it in command bodies from the yielded state, as the `run` command reads
+   `session_maker`.
