@@ -2,8 +2,8 @@
 
 This file lists work that was knowingly deferred: shortcuts taken on purpose, follow-ups
 outside the scope of an execution plan, findings noticed but not fixed, and test targets
-that were declined. A defect that blocks current work does not belong here; fix or
-report it instead.
+that were declined. Fix or report a defect that blocks current work instead of listing
+it here.
 
 Add an entry when the debt is recorded, and remove it in the change that resolves it.
 Dates are in UTC. The `develop` skill maintains this file alongside the execution plans
