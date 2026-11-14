@@ -835,6 +835,7 @@ Edit only the canonical copy:
 Asset                 Canonical copy (*Codex*)     Symlink (*Claude Code*)
 ====================  ===========================  =========================
 Project instructions  ``AGENTS.md``                ``CLAUDE.md``
+General instructions  ``AGENTS.override.md``       ``CLAUDE.local.md``
 Reference files       ``.agents/docs/<topic>.md``  none; read on demand
 Agent skills          ``.agents/skills/<name>/``   ``.claude/skills/<name>``
 ====================  ===========================  =========================
@@ -850,10 +851,20 @@ infer from the code: the mandatory rules, the commands of the development
 workflow, the project layout, and an index of reference files. *Codex* reads
 ``AGENTS.md`` natively (see `Custom instructions with AGENTS.md`_).
 *Claude Code* reads ``CLAUDE.md``, the symlink to it (see `How Claude remembers
-your project`_). Recent *Claude Code* versions also read ``AGENTS.md``
+your project`_). *Claude Code* v2.1.277 and later also read ``AGENTS.md``
 directly, but only when no ``CLAUDE.md`` or ``CLAUDE.local.md`` exists in the
-project directory or above it; the symlink makes the instructions load
-regardless of such files and of the agent version.
+project directory or above it. Because the generated project contains
+``CLAUDE.local.md``, *Claude Code* depends on the symlink.
+
+``AGENTS.override.md`` in the project root holds general instructions that do
+not depend on the project: output formatting, technical writing, documentation
+lookups for external libraries, the use of *uv*, and code comments.
+*Claude Code* reads it through the symlink ``CLAUDE.local.md`` and loads it
+after ``CLAUDE.md``. *Codex* reads at most one instruction file per directory
+and prefers ``AGENTS.override.md`` to ``AGENTS.md``. The first instruction in
+``AGENTS.override.md`` therefore directs *Codex* to read ``AGENTS.md``.
+*Codex* receives the project instructions through that file read, not through
+automatic loading.
 
 .. _`Custom instructions with AGENTS.md`: https://learn.chatgpt.com/docs/agent-configuration/agents-md
 .. _`How Claude remembers your project`: https://code.claude.com/docs/en/memory
@@ -867,6 +878,9 @@ The instructions keep the context that every session pays for small:
 
 * ``AGENTS.md`` is loaded into every session and holds only what applies to
   most tasks.
+
+* ``AGENTS.override.md`` is loaded into every session as well and holds only
+  rules that apply to any project.
 
 * The reference files under ``.agents/docs`` are not loaded automatically. The
   *Reference* table in ``AGENTS.md`` names the tasks that each file serves, and
@@ -894,19 +908,25 @@ The instructions keep the context that every session pays for small:
 Start the agent in the root of the generated project and confirm that it loaded
 the instructions:
 
-* In *Claude Code*, run ``/memory`` or ``/context all``; ``CLAUDE.md`` appears
-  among the memory files.
+* In *Claude Code*, run ``/memory`` or ``/context all``; ``CLAUDE.md`` and
+  ``CLAUDE.local.md`` appear among the memory files.
 
 * In *Codex*, run ``codex "Summarize the current instructions."``; the summary
-  cites the rules from ``AGENTS.md``. *Codex* treats the nearest directory that
-  contains ``.git`` as the project root and loads every ``AGENTS.md`` from
-  there down to the working directory. Initialize the Git work tree first, as
-  in `A Typical Session`_, to make the generated project that root.
+  cites the rules from both ``AGENTS.override.md`` and ``AGENTS.md``. A summary
+  that cites only ``AGENTS.override.md`` means that *Codex* did not follow the
+  instruction to read ``AGENTS.md``. *Codex* treats the nearest directory that
+  contains ``.git`` as the project root and loads instruction files from there
+  down to the working directory. Initialize the Git work tree first to make the
+  generated project that root, as shown in `A Typical Session`_.
 
 **Maintenance**
 
-* Edit ``AGENTS.md``, never ``CLAUDE.md``: *Claude Code* refuses to write
-  through the symlink.
+* Edit ``AGENTS.md`` and ``AGENTS.override.md``, never ``CLAUDE.md`` or
+  ``CLAUDE.local.md``: *Claude Code* refuses to write through the symlinks.
+
+* Keep the instruction at the top of ``AGENTS.override.md`` that directs the
+  agent to read ``AGENTS.md``. Without it, *Codex* does not see the project
+  instructions.
 
 * Update the instructions in the same change that alters a command, a path, a
   rule, or a design decision they describe, and delete an instruction that the
@@ -917,10 +937,11 @@ the instructions:
   project instruction files by default. Move detail that serves one area into a
   reference file and list it in the *Reference* table.
 
-* Keep personal instructions out of version control: ``CLAUDE.local.md``,
-  which *Claude Code* loads alongside ``CLAUDE.md``, and
-  ``AGENTS.override.md``, which *Codex* reads in place of the ``AGENTS.md`` in
-  the same directory.
+* The template occupies ``CLAUDE.local.md`` and ``AGENTS.override.md``, the
+  file names that the agents provide for personal project instructions. Keep
+  personal instructions in the user-level files instead:
+  ``~/.claude/CLAUDE.md`` for *Claude Code* and ``~/.codex/AGENTS.md`` for
+  *Codex*.
 
 * In the template, the instruction files are Jinja templates, unlike the
   skills, which Cookiecutter copies without rendering. Use the

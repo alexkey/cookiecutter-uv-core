@@ -1,8 +1,9 @@
 """Links the shared agent assets into the locations that Claude Code reads.
 
 The generated project stores each agent asset once, in the location that OpenAI Codex
-reads: the project instructions in `AGENTS.md` and each skill in `.agents/skills`.
-Claude Code reads `CLAUDE.md` and `.claude/skills`, where each asset appears as a
+reads: the project instructions in `AGENTS.md`, the general instructions in
+`AGENTS.override.md`, and each skill in `.agents/skills`. Claude Code reads
+`CLAUDE.md`, `CLAUDE.local.md`, and `.claude/skills`, where each asset appears as a
 relative symlink to its canonical copy.
 
 Cookiecutter does not reproduce symlinks from a template; this hook creates the links
@@ -16,6 +17,9 @@ from pathlib import Path
 
 SHARED_INSTRUCTIONS = Path("AGENTS.md")
 CLAUDE_INSTRUCTIONS = Path("CLAUDE.md")
+
+SHARED_GENERAL_INSTRUCTIONS = Path("AGENTS.override.md")
+CLAUDE_GENERAL_INSTRUCTIONS = Path("CLAUDE.local.md")
 
 SHARED_SKILLS_DIR = Path(".agents", "skills")
 CLAUDE_SKILLS_DIR = Path(".claude", "skills")
@@ -46,16 +50,13 @@ def _link(link: Path, target: Path, *, target_is_directory: bool) -> None:
 
 
 def link_instructions() -> None:
-    """Creates the `CLAUDE.md` symlink to the shared project instructions.
-
-    Claude Code reads `AGENTS.md` directly only when no `CLAUDE.md` or `CLAUDE.local.md`
-    exists in the project directory or above it. The symlink makes the instructions
-    load regardless of such files.
-    """
-    if not SHARED_INSTRUCTIONS.is_file():
-        return
-
-    _link(CLAUDE_INSTRUCTIONS, SHARED_INSTRUCTIONS, target_is_directory=False)
+    """Creates the Claude Code symlinks to the shared instruction files."""
+    for link, target in (
+        (CLAUDE_INSTRUCTIONS, SHARED_INSTRUCTIONS),
+        (CLAUDE_GENERAL_INSTRUCTIONS, SHARED_GENERAL_INSTRUCTIONS),
+    ):
+        if target.is_file():
+            _link(link, target, target_is_directory=False)
 
 
 def link_skills() -> None:

@@ -112,9 +112,12 @@ and skip the files the task does not need.
 ## Maintaining these instructions
 
 - Each agent asset has one canonical copy, in the location that OpenAI Codex reads:
-  `AGENTS.md` for these instructions and `.agents/skills/<name>/` for each skill.
-  Claude Code reaches them through the symlinks `CLAUDE.md` and
-  `.claude/skills/<name>`. Edit only the canonical copies.
+  `AGENTS.md` for these instructions, `AGENTS.override.md` for the general
+  instructions, and `.agents/skills/<name>/` for each skill. Claude Code reaches them
+  through the symlinks `CLAUDE.md`, `CLAUDE.local.md`, and `.claude/skills/<name>`.
+  Edit only the canonical copies.
+- Codex reads `AGENTS.override.md` in place of this file and reaches this file only
+  through the instruction at the top of `AGENTS.override.md`. Keep that instruction.
 - This file is loaded into every session. Keep it under 200 lines and limit it to
   what applies to most tasks. Put detail that serves one area into a file under
   `.agents/docs/` and list that file in the Reference table.
