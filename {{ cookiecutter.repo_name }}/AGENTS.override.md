@@ -20,8 +20,8 @@ commit messages, and pull request descriptions.
   other decorative symbols.
 
 Use non-ASCII characters only when the content requires them, such as string literals,
-localized text, test data, formal specifications, or verbatim quotations. When editing
-files, leave existing non-ASCII text outside the scope of the change as is.
+localized text, test data, formal specifications, or verbatim quotations. Leave
+existing non-ASCII text outside the scope of a change as is when editing files.
 
 Follow these line width guidelines unless project conventions, style rules, or formatter
 settings define otherwise. Treat them as guidelines, not hard limits.
@@ -36,9 +36,9 @@ settings define otherwise. Treat them as guidelines, not hard limits.
 
 Apply these rules to all technical text you produce: responses, code comments,
 docstrings, documentation, commit messages, pull request descriptions, agent
-instructions of any kind (such as `AGENTS.md` and `CLAUDE.md` files, prompts, skill
-sources, and plugin or agent manifests), specifications of any kind, and any other
-technical source text.
+instructions of any kind, specifications of any kind, and any other technical source
+text. Agent instructions include `AGENTS.md` and `CLAUDE.md` files, prompts, skill
+sources, and plugin or agent manifests.
 
 - Use precise, professional, declarative language, and the imperative mood for
   instructions and recommendations.
@@ -59,8 +59,8 @@ technical source text.
 - Omit time-relative words that make text go stale, such as "today", "currently",
   "recently", and "for now".
 - Avoid unverifiable claims such as "this never fires".
-- Avoid vague hedging, such as "basically", "kind of", "seems", and "arguably". When
-  something is unknown or unverified, state that explicitly and specifically.
+- Avoid vague hedging, such as "basically", "kind of", "seems", and "arguably". State
+  explicitly and specifically what is unknown or unverified.
 - Keep a word from these categories where it carries precise technical meaning, such
   as "only when", "if ... then", or "the file already exists".
 - Limit each sentence to one idea. Split a sentence that combines a condition, an
@@ -69,7 +69,7 @@ technical source text.
   write "Read the file before any task unless it is loaded", not "If the file is not
   loaded, read it before any task".
 - Avoid double negatives and "neither ... nor" conditions.
-- Do not interrupt a sentence with an appositive or a parenthetical aside; give the
+- Do not interrupt a sentence with an appositive or a parenthetical aside. Give the
   explanation its own sentence.
 
 ## Library and API Documentation
@@ -84,8 +84,8 @@ recalled API knowledge can predate the current release.
 - Treat retrieved documentation as more authoritative than recalled knowledge.
 - Skip the lookup for code that depends on no external API and for documentation
   already retrieved in the current task.
-- If Context7 is unavailable or does not cover the library, use the official
-  documentation or the installed package source, and name the source used.
+- Use the official documentation or the installed package source when Context7 is
+  unavailable or does not cover the library, and name the source used.
 
 ## Python with uv
 
@@ -95,8 +95,8 @@ projects, unless the project uses a different Python toolchain.
 - Run the interpreter, scripts, and tools with `uv run`, such as `uv run python ...`,
   `uv run script.py`, or `uv run pytest`. Never invoke `python`, `python3`, `pip`, or
   Python tools directly.
-- In a project, manage dependencies with `uv add` and `uv remove` (`--dev` for
-  development dependencies), not `pip install` or `uv pip install`.
+- Manage the dependencies of a project with `uv add` and `uv remove`, not
+  `pip install` or `uv pip install`. Pass `--dev` for development dependencies.
 - Outside a project, declare script dependencies inline with
   `uv add --script <script> <package>`, or supply them for a single command with
   `uv run --with <package> ...`.
@@ -109,7 +109,7 @@ projects, unless the project uses a different Python toolchain.
 
 Use comments and docstrings to explain what the code cannot express: intent, rationale,
 invariants, assumptions, constraints, and non-obvious behavior. Assume the reader knows
-the language; explain why the code exists and why the approach is required, not what
+the language. Explain why the code exists and why the approach is required, not what
 each line does. Prefer improving names, structure, and types over adding comments.
 
 For Python, follow the Google Python Style Guide, section 3.8 (Comments and Docstrings):
@@ -125,8 +125,8 @@ Add a comment only when it conveys information the code cannot, such as:
 - Subtle API constraints, framework requirements, or security-sensitive logic.
 - Invariants, preconditions, postconditions, and assumptions that must hold.
 - Design rationale that the code alone cannot communicate.
-- Public interfaces (exported functions, classes, and modules) and configuration that
-  require documentation for correct and safe use.
+- Public interfaces and configuration that require documentation for correct and safe
+  use, such as exported functions, classes, and modules.
 
 Do not write comments that:
 
@@ -145,5 +145,5 @@ Document public APIs by their observable behavior, inputs, outputs, errors, side
 effects, and usage constraints. Omit implementation details unless they affect correct
 use.
 
-Apply these rules to comments you write or modify; leave unrelated existing comments
+Apply these rules to comments you write or modify. Leave unrelated existing comments
 unchanged.
