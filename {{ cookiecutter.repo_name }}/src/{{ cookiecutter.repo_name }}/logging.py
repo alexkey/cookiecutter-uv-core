@@ -56,7 +56,9 @@ def check_log_level(value: str | int) -> str | int:
     match value:
         # `bool` is an `int` subclass; `False` would otherwise pass as NOTSET.
         case bool():
-            raise TypeError(f"log level must be string or integer, not {type(value)!r}")
+            raise TypeError(
+                f"log level must be a string or an integer, not {type(value)!r}"
+            )
 
         case str() if value in LOG_LEVELS:
             return value
@@ -72,10 +74,14 @@ def check_log_level(value: str | int) -> str | int:
 
         case int():
             expected = ", ".join(map(str, sorted(LOG_LEVELS.values())))
-            raise ValueError(f"invalid log level: {value} (expected one of {expected})")
+            raise ValueError(
+                f"invalid log level: {value!r} (expected one of {expected})"
+            )
 
         case _:
-            raise TypeError(f"log level must be string or integer, not {type(value)!r}")
+            raise TypeError(
+                f"log level must be a string or an integer, not {type(value)!r}"
+            )
 
 
 def is_level_enabled(
@@ -106,7 +112,7 @@ class OrderedKeysProcessor:
 
     def __init__(self, key_order: tuple[str, ...]) -> None:
         assert isinstance(key_order, tuple), (
-            f"key_order must be a tuple, not {type(key_order)!r}"
+            f"`key_order` must be a tuple, not {type(key_order)!r}"
         )
         self._key_order = key_order
         self._key_set = frozenset(key_order)

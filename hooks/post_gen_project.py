@@ -43,7 +43,7 @@ def _link(link: Path, target: Path, *, target_is_directory: bool) -> None:
     if link.is_symlink():
         link.unlink()
     elif link.exists():
-        print(f"Skipping {link}: a non-symlink entry already exists", file=sys.stderr)
+        print(f"Skipped `{link}`: a non-symlink entry already exists", file=sys.stderr)
         return
 
     link.symlink_to(target, target_is_directory=target_is_directory)

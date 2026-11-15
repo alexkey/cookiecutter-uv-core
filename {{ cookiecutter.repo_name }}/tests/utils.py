@@ -38,7 +38,7 @@ def parse_json_lines(stream: io.StringIO) -> list[LogRecord]:
             continue
 
         obj = json.loads(line)
-        assert isinstance(obj, dict), f"expected a JSON object, not {type(obj)!r}"
+        assert isinstance(obj, dict), f"expected a JSON object, got {type(obj)!r}"
         records.append(obj)
 
     return records
@@ -70,14 +70,14 @@ def assert_log_event(
     ]
 
     assert len(matches) == count, (
-        f"expected {count} log event(s) matching {match!r}, found {len(matches)}"
+        f"expected {count} log event(s) matching {match!r}, got {len(matches)}"
     )
 
     for record in matches:
         for key, expected in fields.items():
             actual = record.get(key)
             assert actual == expected, (
-                f"log event {match!r}: expected {key}={expected!r}, got {actual!r}"
+                f"log event {match!r}: expected `{key}` {expected!r}, got {actual!r}"
             )
 
     return matches
@@ -128,8 +128,8 @@ def assert_log_exception(
             entry["exc_value"] for entry in chain if entry["exc_type"] == exc_type
         ]
         assert exc_value in values, (
-            f"log event {match!r}: expected exc_value {exc_value!r} for {exc_type!r}, "
-            f"got {values!r}"
+            f"log event {match!r}: expected `exc_value` {exc_value!r} "
+            f"for {exc_type!r}, got {values!r}"
         )
 
     return record

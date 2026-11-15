@@ -47,7 +47,7 @@ async def wait_for_db(engine: AsyncEngine, retries: int, delay: float) -> bool:
         try:
             async with engine.connect() as conn:
                 await conn.execute(sa_text("SELECT 1"))
-            logger.info("Database is ready")
+            logger.info("Database ready")
             return True
 
         except Exception as exc:  # noqa: BLE001
@@ -62,7 +62,7 @@ async def wait_for_db(engine: AsyncEngine, retries: int, delay: float) -> bool:
 
 async def main() -> int:
     if not DB_URL:
-        logger.error("`%s` environment variable is not set", DB_URL_VARNAME)
+        logger.error("Environment variable `%s` not set", DB_URL_VARNAME)
         return 1
 
     try:

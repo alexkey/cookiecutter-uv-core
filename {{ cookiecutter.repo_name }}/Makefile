@@ -65,7 +65,7 @@ error_helper = { echo "ERROR: ${1}" ; exit ${ERROR_ENVIRONMENT} ; }
 
 # Fails unless command $1 is on PATH, resolved through launcher $2 when one is given.
 which_helper = ${2} which ${1} >/dev/null \
-	|| $(call error_helper,"Can\'t find the command: ${1}")
+	|| $(call error_helper,Cannot find the command: \`${1}\`)
 
 version_helper = $(shell ${1} --version \
 	| ${GREP} -o "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*")
@@ -289,7 +289,7 @@ endif
 
 	@uv_ver="$(call version_helper,${UV})" ; \
 	if [[ "$${uv_ver}" != "$(UV_VERSION)" ]]; then \
-		echo "WARNING: Incompatible \`${UV}\` version: $${uv_ver} (expected " \
+		echo "WARNING: Incompatible \`${UV}\` version: $${uv_ver} (expected" \
 			"${UV_VERSION})" ; \
 	fi
 

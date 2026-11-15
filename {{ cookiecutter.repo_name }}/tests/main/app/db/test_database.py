@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Query
 from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool, StaticPool
 
+from {{ cookiecutter.repo_name }}.app.core.utils import repr_obj
 from {{ cookiecutter.repo_name }}.app.db import database
 from {{ cookiecutter.repo_name }}.app.db.database import (
     DEFAULT_ASYNC_ENGINE_PARAMS,
@@ -134,7 +135,7 @@ class TestCreateEngine:
         self, cap_json_logs: io.StringIO, valid_database_url: str
     ) -> None:
         create_engine(valid_database_url, verbose=True)
-        assert_log_event(cap_json_logs, "Created new database engine", level="info")
+        assert_log_event(cap_json_logs, "Database engine created", level="info")
         assert_log_event(cap_json_logs, "Database connection pool", level="info")
 
     def test_returns_none_on_failure(
@@ -143,7 +144,7 @@ class TestCreateEngine:
         url = make_database_url(driver=_INVALID_DRIVER)
         assert create_engine(url) is None
         assert_log_exception(
-            cap_json_logs, "Error creating a new database engine", "NoSuchModuleError"
+            cap_json_logs, "Error creating a database engine", "NoSuchModuleError"
         )
 
     def test_raises_on_failure_when_requested(
@@ -153,7 +154,7 @@ class TestCreateEngine:
         with pytest.raises(NoSuchModuleError):
             create_engine(url, raise_on_exc=True)
         assert_log_exception(
-            cap_json_logs, "Error creating a new database engine", "NoSuchModuleError"
+            cap_json_logs, "Error creating a database engine", "NoSuchModuleError"
         )
 
     def test_logs_masked_url_on_failure(
@@ -165,7 +166,9 @@ class TestCreateEngine:
         url = make_database_url(driver=_INVALID_DRIVER)
         assert create_engine(url) is None
         masked_url = make_database_url(driver=_INVALID_DRIVER, password="***")
-        assert_log_event(cap_json_logs, f"URL -> `{masked_url}`")
+        assert_log_event(
+            cap_json_logs, f"Error creating a database engine: `{masked_url}`"
+        )
         assert database_password not in cap_json_logs.getvalue()
 
 
@@ -199,7 +202,11 @@ class TestDescribeEngine:
 
     def test_reports_when_pool_unavailable(self, cap_json_logs: io.StringIO) -> None:
         describe_engine(cast(AsyncEngine, SimpleNamespace(pool=None)))
-        assert_log_event(cap_json_logs, "Pool metrics not available", level="debug")
+        assert_log_event(
+            cap_json_logs,
+            "Pool metrics not available for the database engine",
+            level="debug",
+        )
 
 
 class TestDisposeEngine:
@@ -211,14 +218,14 @@ class TestDisposeEngine:
         assert engine.pool is not pool
 
     async def test_requires_an_engine(self) -> None:
-        with pytest.raises(AssertionError, match="engine instance must be provided"):
+        with pytest.raises(AssertionError, match="database engine must be provided"):
             await dispose_engine(cast(AsyncEngine, None))
 
     async def test_suppresses_disposal_errors(self, cap_json_logs: io.StringIO) -> None:
         await dispose_engine(cast(AsyncEngine, _EngineWithFailingDispose()))
         assert_log_exception(
             cap_json_logs,
-            "Error occurred during database engine disposal",
+            "Error disposing the database engine",
             "SQLAlchemyError",
             exc_value="dispose failed",
         )
@@ -229,7 +236,7 @@ class TestDisposeEngine:
         engine = create_engine(valid_database_url)
         assert engine is not None
         await dispose_engine(engine, verbose=True)
-        assert_log_event(cap_json_logs, "disposed successfully")
+        assert_log_event(cap_json_logs, "Database engine disposed")
 
 
 class TestCreateSessionmaker:
@@ -256,7 +263,7 @@ class TestCreateSessionmaker:
         assert factory.kw["expire_on_commit"] is True
 
     def test_requires_an_engine(self) -> None:
-        with pytest.raises(AssertionError, match="engine instance must be provided"):
+        with pytest.raises(AssertionError, match="database engine must be provided"):
             create_sessionmaker(cast(AsyncEngine, None))
 
     def test_logs_when_verbose(
@@ -264,8 +271,8 @@ class TestCreateSessionmaker:
     ) -> None:
         engine = create_engine(valid_database_url)
         assert engine is not None
-        create_sessionmaker(engine, verbose=True)
-        assert_log_event(cap_json_logs, "Created new session factory")
+        factory = create_sessionmaker(engine, verbose=True)
+        assert_log_event(cap_json_logs, f"Session factory {repr_obj(factory)} created")
 
 
 class TestCreateSession:
@@ -338,7 +345,7 @@ class TestCreateSession:
         assert fake.session.closed is True
         assert_log_exception(
             cap_json_logs,
-            "Database session cancelled by asyncio task",
+            "Task cancelled during transaction",
             "CancelledError",
         )
 
@@ -360,11 +367,11 @@ class TestCreateSession:
             if record["logger"] == database.__name__
         ]
         assert [record["event"] for record in records] == [
-            "Created new database session",
-            "Began transaction",
+            "Database session created",
+            "Transaction started",
             "Transaction committed",
             "Transaction closed",
-            "Session closed",
+            "Database session closed",
         ]
         contexts = [record.get("extra", {}).get("context") for record in records]
         assert contexts == ["job-42"] * len(records)

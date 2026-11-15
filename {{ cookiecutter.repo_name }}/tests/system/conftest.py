@@ -119,13 +119,15 @@ def database_url() -> SecretStr:
     # Explicit because an empty `SecretStr` evaluates to `False`.
     if url is None:
         fail_without_traceback(
-            f"{_DB_URL_VAR} is not set; pass --skip-db to skip these tests"
+            f"`{_DB_URL_VAR}` is not set (pass `--skip-db` to skip these tests)"
         )
 
     try:
         _check_connection(url)
     except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-        fail_without_traceback(f"database for {_DB_URL_VAR} is not reachable: {exc!r}")
+        fail_without_traceback(
+            f"database for `{_DB_URL_VAR}` is not reachable: {exc!r}"
+        )
 
     return url
 
@@ -141,7 +143,7 @@ def database_schema(database_url: SecretStr) -> Iterator[str]:
     try:
         run_ddl(f"CREATE SCHEMA {schema}")
     except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-        fail_without_traceback(f"cannot create schema {schema}: {exc!r}")
+        fail_without_traceback(f"cannot create schema `{schema}`: {exc!r}")
 
     try:
         yield schema
@@ -149,7 +151,7 @@ def database_schema(database_url: SecretStr) -> Iterator[str]:
         try:
             run_ddl(f"DROP SCHEMA {schema} CASCADE")
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
-            fail_without_traceback(f"cannot drop schema {schema}: {exc!r}")
+            fail_without_traceback(f"cannot drop schema `{schema}`: {exc!r}")
 
 
 @pytest.fixture

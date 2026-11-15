@@ -67,7 +67,9 @@ def read_latest_versions(lines: Iterable[str]) -> dict[NormalizedName, Version]:
             continue
 
         if len(fields) != 2:
-            raise ValueError(f"expected `NAME VERSION`, got {line.strip()!r}")
+            raise ValueError(
+                f"invalid line: {line.strip()!r} (expected `NAME VERSION`)"
+            )
 
         latest[canonicalize_name(fields[0])] = Version(fields[1])
     return latest

@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
 import sys
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -28,9 +29,11 @@ from {{ cookiecutter.repo_name }}.logging import (
 from tests.utils import _PASSWORD, assert_log_event, parse_json_lines
 
 _INVALID_LEVELS = [
-    pytest.param("nope", ValueError, "invalid log level", id="unknown-name"),
-    pytest.param(-1, ValueError, "invalid log level", id="unknown-number"),
-    pytest.param(True, TypeError, "must be string or integer", id="bool"),
+    pytest.param("nope", ValueError, "invalid log level: 'NOPE'", id="unknown-name"),
+    pytest.param(-1, ValueError, "invalid log level: -1", id="unknown-number"),
+    pytest.param(
+        True, TypeError, "must be a string or an integer, not <class 'bool'>", id="bool"
+    ),
 ]
 
 
@@ -66,22 +69,26 @@ class TestCheckLogLevel:
 
     @pytest.mark.parametrize("value", [True, False])
     def test_rejects_bool(self, value: bool) -> None:
-        with pytest.raises(TypeError, match="must be string or integer"):
+        expected = "log level must be a string or an integer, not <class 'bool'>"
+        with pytest.raises(TypeError, match=re.escape(expected)):
             check_log_level(value)
 
     @pytest.mark.parametrize("value", ["", "trace", "verbose", "warninge", "10"])
     def test_rejects_unknown_name(self, value: str) -> None:
-        with pytest.raises(ValueError, match="invalid log level"):
+        expected = f"invalid log level: {value.upper()!r} (expected one of "
+        with pytest.raises(ValueError, match=re.escape(expected)):
             check_log_level(value)
 
     @pytest.mark.parametrize("value", [-1, 5, 11, 100])
     def test_rejects_unknown_number(self, value: int) -> None:
-        with pytest.raises(ValueError, match="invalid log level"):
+        expected = f"invalid log level: {value!r} (expected one of "
+        with pytest.raises(ValueError, match=re.escape(expected)):
             check_log_level(value)
 
     @pytest.mark.parametrize("value", [None, 1.5, [], (), object()])
     def test_rejects_unsupported_type(self, value: object) -> None:
-        with pytest.raises(TypeError, match="must be string or integer"):
+        expected = f"log level must be a string or an integer, not {type(value)!r}"
+        with pytest.raises(TypeError, match=re.escape(expected)):
             check_log_level(value)  # type: ignore[arg-type, ty:invalid-argument-type]
 
 
@@ -138,7 +145,8 @@ class TestIsLevelEnabled:
 class TestOrderedKeysProcessor:
     @pytest.mark.parametrize("bad_order", [["a", "b"], {"a", "b"}, "ab", None])
     def test_init_requires_tuple(self, bad_order: object) -> None:
-        with pytest.raises(AssertionError, match="key_order must be a tuple"):
+        expected = f"`key_order` must be a tuple, not {type(bad_order)!r}"
+        with pytest.raises(AssertionError, match=re.escape(expected)):
             OrderedKeysProcessor(
                 bad_order  # type: ignore[arg-type, ty:invalid-argument-type]
             )
@@ -370,7 +378,7 @@ class TestSetupLogging:
 
     def test_rejects_invalid_format(self) -> None:
         stream = io.StringIO()
-        with pytest.raises(ValueError, match="invalid log format"):
+        with pytest.raises(ValueError, match="invalid log format: 'bogus'"):
             setup_logging("info", cast(LogFormatT, "bogus"), log_stream=stream)
 
     def test_reconfiguration_replaces_handler(self) -> None:

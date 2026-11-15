@@ -45,7 +45,7 @@ def pytest_configure(config: pytest.Config) -> None:
             seed = int(seed_value)
         except ValueError:
             raise pytest.UsageError(
-                f"{SEED_ENV_VAR} must be an integer, got {seed_value!r}"
+                f"invalid `{SEED_ENV_VAR}`: {seed_value!r} (expected an integer)"
             ) from None
     else:
         seed = random.SystemRandom().randrange(2**32)
@@ -54,7 +54,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def pytest_report_header(config: pytest.Config) -> str:
-    return f"random seed: {config.stash[_seed_key]} (set {SEED_ENV_VAR} to reproduce)"
+    return f"random seed: {config.stash[_seed_key]} (set `{SEED_ENV_VAR}` to reproduce)"
 
 
 def pytest_collection_modifyitems(
@@ -64,11 +64,11 @@ def pytest_collection_modifyitems(
     markers_to_skip = {
         PYTEST_MARK_SLOW: (
             config.getoption(PYTEST_OPT_SKIP_SLOW),
-            f"skipping slow tests as {PYTEST_OPT_SKIP_SLOW} is set",
+            f"skipping slow tests as `{PYTEST_OPT_SKIP_SLOW}` is set",
         ),
         PYTEST_MARK_REQUIRES_DB: (
             config.getoption(PYTEST_OPT_SKIP_DB),
-            f"skipping database tests as {PYTEST_OPT_SKIP_DB} is set",
+            f"skipping database tests as `{PYTEST_OPT_SKIP_DB}` is set",
         ),
     }
 

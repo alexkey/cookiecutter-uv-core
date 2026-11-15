@@ -85,7 +85,7 @@ class TestCliStartup:
             _PACKAGE,
         }
         assert not unexpected, (
-            f"{' '.join(args)} loaded {sorted(unexpected)}; "
+            f"`{' '.join(args)}` loaded {sorted(unexpected)}: "
             "a module on the startup path imports them without `lazy`"
         )
 

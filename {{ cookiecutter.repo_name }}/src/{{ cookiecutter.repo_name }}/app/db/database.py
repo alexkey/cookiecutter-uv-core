@@ -193,7 +193,7 @@ def describe_engine(engine: AsyncEngine) -> None:
     """Logs the engine's connection pool metrics."""
     pool = getattr(engine, "pool", None)
     if not pool:
-        logger.debug("Pool metrics not available for engine: %r", engine)
+        logger.debug("Pool metrics not available for the database engine: %r", engine)
         return
 
     def _call(obj: Any, name: str, sentinel_: str = "not available") -> Any:
@@ -243,7 +243,7 @@ def create_engine(
         engine = create_async_engine(_url, **merged)
     except SQLAlchemyError:
         logger.exception(
-            "Error creating a new database engine: URL -> `%s`",
+            "Error creating a database engine: `%s`",
             _redact_database_url(url),
             extra=merged,
         )
@@ -252,7 +252,7 @@ def create_engine(
         return None
 
     if verbose:
-        logger.info("Created new database engine: %r", engine)
+        logger.info("Database engine created: %r", engine)
         describe_engine(engine)
 
     return engine
@@ -271,7 +271,7 @@ async def dispose_engine(
         engine: Engine to dispose.
         verbose: If True, log successful disposal.
     """
-    assert engine, "Database engine instance must be provided"
+    assert engine, "database engine must be provided"
     try:
         await engine.dispose(
             # Close the connections checked in to the pool.
@@ -279,13 +279,13 @@ async def dispose_engine(
         )
     except SQLAlchemyError:
         logger.exception(
-            "Error occurred during database engine disposal: %r",
+            "Error disposing the database engine: %r",
             engine,
         )
         return
 
     if verbose:
-        logger.info("Database engine disposed successfully: %r", engine)
+        logger.info("Database engine disposed: %r", engine)
 
 
 def create_sessionmaker(
@@ -306,7 +306,7 @@ def create_sessionmaker(
     Returns:
         A session factory producing AsyncSession instances.
     """
-    assert engine, "Database engine instance must be provided"
+    assert engine, "database engine must be provided"
     merged: AsyncSessionParams = {**DEFAULT_ASYNC_SESSION_PARAMS, **params}
 
     sessionmaker = async_sessionmaker(
@@ -315,7 +315,7 @@ def create_sessionmaker(
 
     if verbose:
         logger.info(
-            "Created new session factory %s: %r", repr_obj(sessionmaker), sessionmaker
+            "Session factory %s created: %r", repr_obj(sessionmaker), sessionmaker
         )
 
     return sessionmaker
@@ -361,18 +361,18 @@ async def create_session(
         async with sessionmaker() as session:
             extra.update({"session": repr_obj(session)})
             if verbose:
-                logger.info("Created new database session", extra=extra)
+                logger.info("Database session created", extra=extra)
 
             try:
                 async with session.begin() as tx:
                     extra.update({"transaction": repr_obj(tx)})
                     if verbose:
-                        logger.info("Began transaction", extra=extra)
+                        logger.info("Transaction started", extra=extra)
 
                     yield session
 
             except asyncio.CancelledError as exc:
-                log_rollback("Database session cancelled by asyncio task", exc)
+                log_rollback("Task cancelled during transaction", exc)
                 raise  # <- preserve task cancellation
 
             except SQLAlchemyError as exc:
@@ -395,4 +395,4 @@ async def create_session(
 
     finally:
         if verbose and session:
-            logger.info("Session closed", extra=extra)
+            logger.info("Database session closed", extra=extra)

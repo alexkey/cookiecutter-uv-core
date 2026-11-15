@@ -51,7 +51,7 @@ class LazyGroup(click.Group):
 
         if not isinstance(command, click.Command):
             raise TypeError(
-                f"{import_path!r} must be a click.Command, not {type(command)!r}"
+                f"`{import_path}` must name `click.Command`, not {type(command)!r}"
             )
 
         return command

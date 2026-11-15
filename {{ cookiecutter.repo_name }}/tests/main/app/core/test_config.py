@@ -51,14 +51,17 @@ class TestCheckDatabaseUrl:
         ["postgresql", "postgresql+psycopg", "mysql+aiomysql"],
     )
     def test_rejects_wrong_driver(
-        self, make_database_url: Callable[..., str], driver: str
+        self, make_database_url: Callable[..., str], database_driver: str, driver: str
     ) -> None:
         url = make_database_url(driver=driver)
-        with pytest.raises(ValueError, match=re.escape(f"driver, not `{driver}`")):
+        expected = f"must use the `{database_driver}` driver, not `{driver}`"
+        with pytest.raises(ValueError, match=re.escape(expected)):
             check_database_url(SecretStr(url))
 
     def test_rejects_missing_host(self, make_database_url: Callable[..., str]) -> None:
-        with pytest.raises(ValueError, match="host or socket"):
+        with pytest.raises(
+            ValueError, match="must include a host or a socket directory"
+        ):
             check_database_url(SecretStr(make_database_url(host=None)))
 
     @pytest.mark.parametrize(
@@ -71,7 +74,7 @@ class TestCheckDatabaseUrl:
     def test_rejects_missing_database_name(
         self, make_database_url: Callable[..., str], database: str | None
     ) -> None:
-        with pytest.raises(ValueError, match="database name"):
+        with pytest.raises(ValueError, match="must include a database name"):
             check_database_url(SecretStr(make_database_url(database=database)))
 
 
