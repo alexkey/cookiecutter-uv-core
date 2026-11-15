@@ -49,6 +49,45 @@ tools enforce part of them: Ruff, ty, Mypy, and Pylint all run under `make lint`
   the line of a required broad handler, as rule 4 describes.
   `tests/system/conftest.py` holds examples.
 
+## Log and exception messages
+
+- Exception and assertion messages start in lowercase and end without a period. A
+  wrong type reads "<subject> must be <expected type>, not <actual type>", as in
+  "log level must be a string or an integer, not <class 'bool'>". A wrong value reads
+  "invalid <subject>: <value> (expected <what>)", as in "invalid log level: 'NOPE'
+  (expected one of ...)". Assertion messages in the test helpers read
+  "expected <what>, got <actual>".
+- Articles in log and exception messages follow natural English and add no words that
+  do not make the message clearer:
+  - Use "a" or "an" before a kind of value that the message describes in words, as
+    in "must be a string or an integer" and "must include a host or a socket
+    directory".
+  - Omit the article before a Python type name, as in "must be `str` or `int`" and
+    "must name `click.Command`".
+  - Omit "the" before a subject that names a parameter, an argument, or a setting, as
+    in "log level must be ..." and "database URL must ...".
+  - Omit the article before the subject of a log message, as in "Database engine
+    created".
+  - Use "the" before a specific object or value that a natural-language phrase
+    describes, as in "must use the `postgresql+asyncpg` driver" and "Error disposing
+    the database engine".
+  - Omit "the" where it only lengthens the message, as in "cannot create schema
+    `<name>`" and "Database error during transaction".
+- Log messages start in sentence case and end without a period. The subject comes
+  first, without auxiliary verbs, as in "Transaction committed". A failed operation
+  reads "Error <gerund> <object>", as in "Error creating a database engine". An error
+  inside a block reads "<kind> during <operation>", as in "Database error during
+  transaction".
+- Details follow a colon and a space, as in "Database engine created: %r".
+- Names, options, environment variables, paths, and URLs appear in backticks, as in
+  "Environment variable `{{ cookiecutter.env_prefix }}DATABASE_URL` not set". Input
+  values, objects, and exceptions appear in their `repr()` form, through `!r` or `%r`.
+- Log calls pass their arguments to `%s` and `%r` placeholders instead of formatting
+  the message first. `filter_by_level` then drops a record below the configured level
+  before any formatting runs.
+- Tests match the distinctive part of a message, such as its subject and the
+  offending value, not its full text.
+
 ## Docstrings and comments
 
 - Docstrings follow the Google style. The one-line summary uses the descriptive third
