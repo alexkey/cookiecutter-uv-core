@@ -9,7 +9,8 @@ tools enforce part of them: Ruff, ty, Mypy, and Pylint all run under `make lint`
 1. Write code for the interpreter pinned in `.python-version`. The code base uses
    syntax that older interpreters reject: type parameter lists such as
    `def configure[**P, R](...)`, `type` aliases, `except A, B:` without parentheses,
-   and `lazy` imports. Do not rewrite these for older interpreters.
+   and `lazy` imports. Do not rewrite these for interpreters older than the pinned
+   one.
 2. Annotate every function signature. The code must pass both type checkers, ty and
    Mypy.
 3. Format with `make format`, which sorts imports and applies the Ruff formatter. Do

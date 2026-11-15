@@ -1,10 +1,10 @@
 # Development workflows
 
-Read this before setting up the environment, changing dependencies, adding a Makefile
-target, building a distribution, or writing an execution plan. The Makefile is the
-authoritative list of targets and variables. `make help` lists the targets. The
-`make env-show-python`, `make env-show-qa`, and `make env-show-docker` targets print
-the variables with their values.
+Read this before setting up the environment, changing dependencies or the Python
+version, adding a Makefile target, building a distribution, or writing an execution
+plan. The Makefile is the authoritative list of targets and variables. `make help`
+lists the targets. The `make env-show-python`, `make env-show-qa`, and
+`make env-show-docker` targets print the variables with their values.
 
 ## Rules
 
@@ -17,6 +17,9 @@ the variables with their values.
 3. Precede every new Makefile target with a `# target: <name> - <description>`
    comment and a `.PHONY` declaration. `make help` builds its list from those
    comments.
+4. Change the Python version in every place that [Python version](#python-version)
+   lists, in one change. uv rejects a `.python-version` that `requires-python`
+   excludes, and the other pins do not follow either file.
 
 Targets take their options through Makefile variables, for example
 `make test PYTEST_EXTRA_OPTS=--skip-slow`.
@@ -102,6 +105,41 @@ To update the dependencies:
 Other targets: `make requirements-tree` prints the dependency tree,
 `make requirements-refresh` refreshes cached package data before locking, and
 `make requirements UV_LOCK_EXTRA_OPTS=--upgrade-package=<name>` upgrades one package.
+
+## Python version
+
+The project pins one CPython release. The code uses explicit `lazy` imports and
+therefore requires 3.15 or later. Replace the `lazy` imports with regular imports and
+adapt the CLI startup tests in `tests/main/app/cli/test_cli.py` before switching to an
+earlier release. Releases before 3.14 also reject `except A, B:` without parentheses.
+Releases before 3.12 also reject type parameter lists and `type` aliases.
+
+The release appears in two forms.
+
+The full version, such as `3.15.2`:
+
+- `.python-version`, which holds only the version.
+- `requires-python = "~=<version>"` in `pyproject.toml`.
+- `requires-python` in the inline script metadata of `docker/scripts/wait_for_pg.py`
+  and `etc/scripts/bump_requirements.py`.
+
+The major and minor version, such as `3.15`:
+
+- The `Programming Language :: Python :: <version>` classifier in `pyproject.toml`.
+- The `-python<version>-` part of the base image tag in `docker/Dockerfile.x86_64`.
+  `Dockerfile.arm64` and `Dockerfile.aarch64` are symlinks to that file.
+- `py-version` in `pylintrc`.
+
+To change the version:
+
+1. Edit every place above. A patch release changes only the full-version places.
+2. Run `make requirements`. It re-resolves `uv.lock` for the new `requires-python`.
+3. Run `make install`. It replaces a `.venv` whose interpreter differs from the new
+   version and installs the locked packages into the new environment. `make venv` is
+   not needed.
+4. Run `make docker-build` before the next container target. The uv image with the
+   tag `<uv version>-python<major.minor>-trixie-slim` must exist.
+5. Run the checks from the Rules section of `AGENTS.md`.
 
 ## Building and versioning
 

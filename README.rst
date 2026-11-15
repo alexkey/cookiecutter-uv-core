@@ -108,7 +108,7 @@ to accept a default:
 * ``license`` - the `SPDX license identifier`_.
 * ``uv_version`` and ``python_version`` - the pinned *uv* and CPython versions. The
   generated code uses explicit lazy imports and therefore requires a ``python_version``
-  of 3.15 or later.
+  of 3.15 or later. `Changing the Python Version`_ lists the files that pin it.
 * ``docker_build_platform`` - the target platform of Docker image builds.
 * ``redis_image_tag`` and ``postgres_image_tag`` - the image tags of the Docker Compose
   services.
@@ -229,6 +229,50 @@ dependencies and keep the other locked versions.
 Confirm the result, then run the checks and tests against the upgraded packages::
 
     make requirements-check
+    make lint
+    make test
+
+Changing the Python Version
+---------------------------
+
+The ``python_version`` prompt sets the CPython release of a new project, and
+``cookiecutter.json`` holds its default. The generated code uses explicit lazy imports
+and therefore requires 3.15 or later. Replace the lazy imports with regular imports and
+adapt the CLI startup tests in ``tests/main/app/cli/test_cli.py`` before switching to an
+earlier release. Releases before 3.14 also reject ``except A, B:`` without parentheses.
+Releases before 3.12 also reject type parameter lists and ``type`` aliases.
+
+A generated project pins the release in two forms.
+
+The full version, such as ``3.15.2``:
+
+* ``.python-version``, which holds only the version;
+* ``requires-python = "~=3.15.2"`` in ``pyproject.toml``;
+* the ``requires-python`` line of the inline script metadata in
+  ``docker/scripts/wait_for_pg.py`` and ``etc/scripts/bump_requirements.py``.
+
+The major and minor version, such as ``3.15``:
+
+* the ``Programming Language :: Python :: 3.15`` classifier in ``pyproject.toml``;
+* the ``-python3.15-`` part of the base image tag in ``docker/Dockerfile.x86_64``;
+* ``py-version`` in ``pylintrc``.
+
+``Dockerfile.arm64`` and ``Dockerfile.aarch64`` are symlinks to ``Dockerfile.x86_64``.
+
+To change the release of a generated project, edit every place in both lists. A patch
+release changes only the full version. Then lock the dependencies for the new release
+and recreate the environment::
+
+    make requirements
+    make install
+
+``make requirements`` re-resolves ``uv.lock`` for the new ``requires-python``.
+``make install`` replaces a virtual environment whose interpreter differs from the new
+release and installs the locked packages into the new environment. Rebuild the image
+with ``make docker-build`` before the next container target. A *uv* image with the tag
+``<uv_version>-python<major.minor>-trixie-slim`` must exist for the new release. Finish
+with the checks and tests::
+
     make lint
     make test
 
