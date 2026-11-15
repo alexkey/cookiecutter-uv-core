@@ -6,7 +6,7 @@
 
 # pylint: disable=broad-exception-caught
 
-"""Wait for the PostgreSQL database to accept connections.
+"""Waits for the PostgreSQL database to accept connections.
 
 Exits with status 0 once the database responds, 1 if the URL is unset or invalid, and
 2 if every attempt fails.

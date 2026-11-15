@@ -31,12 +31,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
-        f"{PYTEST_MARK_SLOW}: marks tests as slow (deselect with `{PYTEST_OPT_SKIP_SLOW}`)",
+        f"{PYTEST_MARK_SLOW}: marks a test as slow. "
+        f"`{PYTEST_OPT_SKIP_SLOW}` skips such tests.",
     )
     config.addinivalue_line(
         "markers",
-        f"{PYTEST_MARK_REQUIRES_DB}: marks tests that need a live database "
-        f"(deselect with `{PYTEST_OPT_SKIP_DB}`)",
+        f"{PYTEST_MARK_REQUIRES_DB}: marks a test that needs a live database. "
+        f"`{PYTEST_OPT_SKIP_DB}` skips such tests.",
     )
 
     seed_value = os.environ.get(SEED_ENV_VAR)
@@ -64,11 +65,11 @@ def pytest_collection_modifyitems(
     markers_to_skip = {
         PYTEST_MARK_SLOW: (
             config.getoption(PYTEST_OPT_SKIP_SLOW),
-            f"skipping slow tests as `{PYTEST_OPT_SKIP_SLOW}` is set",
+            f"skipping slow tests because `{PYTEST_OPT_SKIP_SLOW}` is set",
         ),
         PYTEST_MARK_REQUIRES_DB: (
             config.getoption(PYTEST_OPT_SKIP_DB),
-            f"skipping database tests as `{PYTEST_OPT_SKIP_DB}` is set",
+            f"skipping database tests because `{PYTEST_OPT_SKIP_DB}` is set",
         ),
     }
 

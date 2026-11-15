@@ -34,8 +34,8 @@ def check_database_url(value: SecretStr) -> SecretStr:
 
     Raises:
         ValueError: If the URL cannot be parsed, uses a driver other than
-            `DATABASE_DRIVER`, has neither a host nor a socket directory, or lacks a
-            database name.
+            `DATABASE_DRIVER`, has no host and no socket directory, or has no database
+            name.
     """
     _url = value.get_secret_value()
     try:
@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     `SettingsConfigDict["env_prefix"]` prefix. Environment variables take precedence
     over the environment file.
 
-    Obtain instances through `get_settings()`, which caches them.
+    Obtain instances through the cached accessor `get_settings()`.
     """
 
     ##
@@ -103,30 +103,29 @@ class Settings(BaseSettings):
         # Reject unknown initialization arguments and environment file entries. Unknown
         # environment variables are ignored, not rejected.
         extra="forbid",
-        # Whether environment and CLI variable names should be read with
-        # case-sensitivity.
+        # Match environment and CLI variable names case-sensitively.
         case_sensitive=True,
-        # Whether to allow partial updates on nested model default object fields.
+        # Disallow partial updates of the default objects of nested model fields.
         nested_model_default_partial_update=False,
         # Prefix for all environment variables.
         env_prefix="{{ cookiecutter.env_prefix }}",
         # Resolved at import time and used only when `Settings` is instantiated
-        # directly; `get_settings()` resolves the environment file on its first call and
+        # directly. `get_settings()` resolves the environment file on its first call and
         # on reload.
         env_file=_resolve_env_file(),
-        # The environment file encoding.
+        # Encoding of the environment file.
         env_file_encoding="utf-8",
         # Read an empty value as an empty string instead of falling back to the field
         # default.
         env_ignore_empty=False,
-        # The nested env values delimiter.
+        # Delimiter between the levels of a nested field name in an environment
+        # variable name.
         env_nested_delimiter="__",
-        # The env string value that should be parsed (e.g. "null", "void", "None", etc.)
-        # into `None`.
-        env_parse_none_str=None,  # <- no parsing should occur
-        # Parse enum field names to values.
-        env_parse_enums=None,  # <- no parsing should occur
-        # The secret files directory or a sequence of directories.
+        # `None` disables parsing a sentinel string, such as "null", into `None`.
+        env_parse_none_str=None,
+        # `None` disables parsing enum member names into enum values.
+        env_parse_enums=None,
+        # `None` disables reading settings from secret files.
         secrets_dir=None,
     )
 
@@ -141,7 +140,7 @@ def get_settings(*, reload: bool = False) -> Settings:
 
     Args:
         reload: If `True`, discard the cached instance and rebuild it from the
-            environment and env file before returning.
+            environment and the environment file before returning.
 
     Raises:
         pydantic.ValidationError: If a required setting is missing or a setting is

@@ -13,8 +13,8 @@ services:
       - "${CURDIR}:${DOCKER_MOUNT_POINT}"
     ports:
       # Publish the container port on the host loopback interface only. Without an
-      # explicit address, Docker binds the port on all host interfaces (0.0.0.0), which
-      # makes it reachable from other machines.
+      # explicit address, Docker binds the port on all host interfaces. Other machines
+      # can then reach the port.
       - "127.0.0.1:${DOCKER_HOST_PORT}:${DOCKER_CONTAINER_PORT}"
     expose:
       - "${DOCKER_CONTAINER_PORT}"

@@ -74,6 +74,6 @@ class TestDatabaseRoundTrip:
 
         await dispose_engine(database_engine)
 
-        # Disposal installs a new pool on the engine; only the original pool shows
+        # Disposal installs a new pool on the engine. Only the original pool shows
         # whether its idle connection was closed.
         assert pool.checkedin() == 0

@@ -1,7 +1,7 @@
 [project]
 name = "{{ cookiecutter.service_name }}"
 version = "{{ cookiecutter.version }}"
-# Dynamic versioning is disabled due to:
+# Dynamic versioning is disabled because of:
 # https://github.com/astral-sh/uv/issues/8714
 #
 # dynamic = ["version"]
@@ -48,8 +48,9 @@ dependencies = [
 [project.optional-dependencies]
 
 [project.scripts]
-# Defines entry points for command-line execution.
-# Example: `[uv run] {{ cookiecutter.service_name }}` to run the package.
+# Each entry installs a console script. Run the application with
+# `{{ cookiecutter.service_name }}` in the project environment, or with
+# `uv run {{ cookiecutter.service_name }}` from the project directory.
 
 {{ cookiecutter.service_name }} = "{{ cookiecutter.repo_name }}.app.cli:main"
 
@@ -58,7 +59,8 @@ requires = ["uv_build>={{ cookiecutter.uv_version }}"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-# The following directory structure is assumed for the source layout:
+# The build backend expects the module directory `module-name` inside `src`, as in
+# this layout:
 #
 # pyproject.toml
 # src
@@ -71,23 +73,21 @@ build-backend = "uv_build"
 module-name = "{{ cookiecutter.repo_name }}"
 namespace = false
 
-# When building a source distribution, all files matching the specified
-# patterns are included:
+# Glob patterns of additional files and directories to include in the source
+# distribution.
 source-include = []
 
-# Files matching these patterns are removed from both distributions, in addition to the
-# default exclusions (__pycache__, *.pyc, and *.pyo):
+# Glob patterns of files and directories to remove from both distributions. The
+# default exclusions `__pycache__`, `*.pyc`, and `*.pyo` apply in addition.
 source-exclude = []
 
-# The directories listed below are included in the source distribution and copied into
-# the `.data` directory of the wheel.
-# For details, see:
+# Directories to include in the source distribution and to copy into the `.data`
+# directory of the wheel. The setting reference describes the format:
 # https://docs.astral.sh/uv/reference/settings/#build-backend_data
 data = []
 
 [tool.uv]
-# Setting `tool.uv.package = true` forces the project to be built and installed
-# into the project environment.
+# Build the project and install it into the project environment as a package.
 package = true
 
 default-groups = ["dev"]
@@ -123,23 +123,23 @@ test = [
 ]
 
 [tool.deptry]
-# Modules that should be considered as local ones.
+# Modules that deptry treats as first-party in addition to the detected ones.
 known_first_party = ["tests"]
 
 [tool.deptry.per_rule_ignores]
 DEP001 = [
     # Imported but missing from the dependency definitions.
 
-    # The application itself shouldn't be specified as a dependency.
+    # The project does not list itself as a dependency.
     "{{ cookiecutter.service_name }}",
 ]
 DEP002 = [
-    # Defined as a dependency but not used in the codebase.
+    # Declared as a dependency but not imported in the codebase.
 
-    "rich",  # <- enhances `structlog` library
+    "rich",  # <- `structlog.dev.RichTracebackFormatter` requires
     "uvicorn",
 ]
 DEP004 = [
-    # Imported but declared as a dev dependency.
+    # Imported but declared as a development dependency.
     "pytest",
 ]

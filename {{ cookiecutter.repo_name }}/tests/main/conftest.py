@@ -89,7 +89,7 @@ def valid_database_url() -> str:
 
 @pytest.fixture(autouse=True)
 def _isolate_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Removes config env vars and clears the cached singleton around every test."""
+    """Clears the settings environment variables and cache around every test."""
     for name in _CONFIG_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
 

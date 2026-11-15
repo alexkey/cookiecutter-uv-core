@@ -17,9 +17,9 @@ def fail_without_traceback(reason: str) -> Never:
     raise pytest.fail.Exception(reason, pytrace=False) from None
 
 
-# The functions below set the local variable `__tracebackhide__` to `True`, which
-# excludes their frames from the Pytest traceback and ends it at the line of the calling
-# test.
+# The functions below set the local variable `__tracebackhide__` to `True`. Pytest then
+# excludes their frames from the traceback. The traceback therefore ends at the line of
+# the calling test.
 
 
 def parse_json_lines(stream: io.StringIO) -> list[LogRecord]:
@@ -54,7 +54,7 @@ def assert_log_event(
         match: Substring searched for within each record's `event` message.
         count: Exact number of matching records the stream must contain.
         **fields: Expected values that every matching record must hold, compared by
-            equality (e.g. `level="error"`).
+            equality. For example, `level="error"` requires error records.
 
     Returns:
         The matching records in capture order, for further inspection by the caller.
@@ -96,9 +96,9 @@ def assert_log_exception(
     Args:
         stream: JSON log lines captured by the `cap_json_logs` fixture.
         match: Substring searched for within the record's `event` message.
-        exc_type: Expected exception class name, e.g. "KeyError".
-        exc_value: If given, the expected `str(exc)` of the matched exception. For
-            `KeyError` this retains the surrounding quotes, e.g. "'missing'".
+        exc_type: Expected exception class name, such as "KeyError".
+        exc_value: If given, the expected `str(exc)` of the matched exception. For a
+            `KeyError`, the value keeps the surrounding quotes, such as "'missing'".
         level: Expected record `level`. Defaults to "error".
 
     Returns:
@@ -170,8 +170,8 @@ def _database_url(
 
 VALID_DATABASE_URL = _database_url()
 
-# URLs that the parser rejects for a malformed port containing the `_PASSWORD` text, so
-# a test can assert that the password stays out of the resulting error.
+# URLs that the parser rejects for a malformed port that contains the `_PASSWORD` text.
+# A test uses them to assert that the password stays out of the resulting error.
 MALFORMED_PORT_DATABASE_URLS = (
     pytest.param(
         f"{_DRIVER}://{_USER}:{_PASSWORD}/{_DATABASE}", id="missing-at-separator"

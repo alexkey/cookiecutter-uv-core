@@ -4,20 +4,20 @@
 # dependencies = ["packaging~=26.3", "tomlkit~=0.15.2"]
 # ///
 
-"""Raise the `~=` and `>=` bounds of outdated requirements in a project file.
+"""Raises the `~=` and `>=` bounds of outdated requirements in a project file.
 
 Reads `NAME VERSION` lines from standard input, where VERSION is the latest release of
 the direct dependency NAME, and rewrites the matching PEP 508 requirements of
 `project.dependencies`, `project.optional-dependencies`, and `dependency-groups` in
 place.
 
-Only the version of each `~=` and `>=` clause changes; spelling, extras, other clauses,
-markers, quoting, and comments are preserved.
+Only the version of each `~=` and `>=` clause changes. Spelling, extras, other clauses,
+markers, quoting, and comments stay intact.
 
-After versions are raised, a requirement must still accept the latest release.
-Otherwise, the requirement is left unchanged and a warning is logged. For example,
-with 15.0.0 as the latest release, `rich>=13,<15` is kept as is, because
-`rich>=15.0.0,<15` would reject it.
+A requirement with raised versions must still accept the latest release. Otherwise,
+the requirement stays unchanged and a warning is logged. For example, the latest
+release 15.0.0 leaves `rich>=13,<15` unchanged, because `rich>=15.0.0,<15` would
+reject that release.
 """
 
 from __future__ import annotations
@@ -40,8 +40,8 @@ if TYPE_CHECKING:
     from packaging.utils import NormalizedName
     from tomlkit.toml_document import TOMLDocument
 
-# Locates the version of each `~=` and `>=` clause in the original text, which
-# `packaging` parses but cannot reproduce with the author's formatting intact. A
+# Locates the version of each `~=` and `>=` clause in the original text. `packaging`
+# parses that text but cannot reproduce it with the author's formatting intact. A
 # version ends at whitespace, `,`, `;`, or the `)` of a parenthesized specifier.
 RAISABLE_CLAUSE = re.compile(r"(?P<operator>~=|>=)(?P<space>\s*)(?P<version>[^\s,;)]+)")
 LITERAL_STRINGS = (StringType.SLL, StringType.MLL)
@@ -78,15 +78,15 @@ def read_latest_versions(lines: Iterable[str]) -> dict[NormalizedName, Version]:
 def raise_bound(operator: str, current: Version, latest: Version) -> Version | None:
     """Returns the raised bound of a clause, or None if it would not increase.
 
-    A `>=` bound becomes the latest release without its local version label, which
-    PEP 440 permits only with `==` and `!=`.
+    A `>=` bound becomes the latest release without its local version label. PEP 440
+    permits local version labels only with `==` and `!=`.
 
-    A `~=` bound keeps its number of release segments: `~=0.4` becomes `~=0.6` rather
-    than `~=0.6.2`, which would narrow the compatible range.
+    A `~=` bound keeps its number of release segments. For example, `~=0.4` becomes
+    `~=0.6` rather than `~=0.6.2`, because `~=0.6.2` would narrow the compatible range.
 
     A `~=` bound also takes the prerelease, post-release, or dev suffix of the latest
-    release if its segments represent that whole release: `~=1.2.0.post1` becomes
-    `~=1.2.0.post2`.
+    release when its segments represent that whole release. For example,
+    `~=1.2.0.post1` becomes `~=1.2.0.post2`.
     """
     if operator == "~=":
         size = len(current.release)
@@ -95,8 +95,8 @@ def raise_bound(operator: str, current: Version, latest: Version) -> Version | N
         candidate = Version(f"{epoch}{release}")
 
         # A suffix belongs to the full release and applies only if the kept segments
-        # still equal that release. With `~=1.2`, 1.2.0.post1 gives `~=1.2.post1`, while
-        # 1.2.5.post1 leaves the bound unchanged.
+        # still equal that release. With `~=1.2`, the latest release 1.2.0.post1 gives
+        # `~=1.2.post1`. The latest release 1.2.5.post1 leaves the bound unchanged.
         if candidate == Version(latest.base_version):
             suffix = latest.public.removeprefix(latest.base_version)
             candidate = Version(f"{candidate}{suffix}")
@@ -127,8 +127,8 @@ def bump_requirement(text: str, latest: Mapping[NormalizedName, Version]) -> str
             return match[0]
         return f"{match['operator']}{match['space']}{bound}"
 
-    # Version specifiers never contain `;`, which therefore separates the name, extras,
-    # and clauses of a name-based requirement from its marker.
+    # Version specifiers never contain `;`. The first `;` therefore separates the name,
+    # extras, and clauses of a name-based requirement from its marker.
     clauses, separator, marker = text.partition(";")
     bumped = RAISABLE_CLAUSE.sub(substitute, clauses) + separator + marker
     if bumped == text:

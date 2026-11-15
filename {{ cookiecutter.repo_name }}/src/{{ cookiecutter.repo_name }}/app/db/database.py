@@ -42,14 +42,12 @@ SessionMakerT = async_sessionmaker[AsyncSession]
 class AsyncEngineParams(TypedDict, total=False):
     """Engine options that `create_engine()` accepts as keyword overrides."""
 
-    # If True, the Engine will log all statements as well as a repr() of their parameter
-    # lists to the default log handler.
+    # If True, the engine logs every statement and a repr() of its parameters to a
+    # handler that writes to standard output. The string "debug" also logs result rows.
     echo: _EchoFlagType
 
-    # If True, the connection pool will log informational output such as when
-    # connections are invalidated as well as when connections are recycled.
-    # If set to the string "debug", the logging will include pool checkouts and
-    # checkins.
+    # If True, the connection pool logs events such as connection invalidation and
+    # recycling. The string "debug" also logs pool checkouts and checkins.
     echo_pool: _EchoFlagType
 
     isolation_level: IsolationLevel
@@ -57,61 +55,56 @@ class AsyncEngineParams(TypedDict, total=False):
     json_deserializer: Callable[..., Any]
     json_serializer: Callable[..., Any]
 
-    # Number of connections that can be opened above and beyond the pool_size setting
-    # (QueuePool only).
+    # Number of connections that QueuePool can open beyond pool_size.
     max_overflow: int
 
-    # Pool subclass, which will be used to create a connection pool instance using the
-    # connection parameters given in the URL.
-    # To disable pooling, set poolclass to NullPool instead.
+    # Pool subclass that the engine instantiates with the connection parameters from the
+    # URL. Set NullPool to disable pooling.
     poolclass: type[Pool] | None
 
-    # If True, test pool connections for liveness upon each checkout.
+    # If True, test each pooled connection for liveness on checkout.
     pool_pre_ping: bool
 
-    # Number of connections to keep open inside the connection pool.
-    # With QueuePool, a pool_size setting of 0 indicates no limit.
+    # Number of connections to keep open in the pool. QueuePool treats 0 as no limit.
     pool_size: int
 
     # Age in seconds after which a pooled connection is replaced on checkout.
     pool_recycle: int
 
-    # Determine steps to take on connections as they are returned to the pool,
-    # especially when the connection wasn't explicitly cleaned up by user code.
+    # Reset that the pool applies to a connection on return: "rollback", "commit", or
+    # None for no reset. The reset ends any transaction that user code left open.
     pool_reset_on_return: _ResetStyleArgType | None
 
-    # Number of seconds to wait before giving up on getting a connection from the pool.
-    # This is only used with QueuePool.
+    # Seconds that QueuePool waits for an available connection before it gives up.
     pool_timeout: float
 
-    # Use LIFO (last-in-first-out) when retrieving connections from QueuePool instead of
-    # FIFO (first-in-first-out).
+    # If True, QueuePool retrieves connections in last-in-first-out order instead of
+    # first-in-first-out order.
     pool_use_lifo: bool
 
 
 class AsyncSessionParams(TypedDict, total=False):
     """Session options that `create_sessionmaker()` accepts as keyword overrides."""
 
-    # When True, all query operations will issue a Session.flush() call to this Session
-    # before proceeding.
+    # If True, each query operation flushes the session before it runs.
     autoflush: bool
 
-    # Automatically start transactions (equivalent to invoking Session.begin()).
+    # If True, an operation that requests database access begins a transaction when
+    # none is active, as Session.begin() does.
     autobegin: bool
 
-    # When True, all instances will be fully expired after each commit(), and all
-    # attribute/object access subsequent to a completed transaction will load from the
-    # most recent database state.
+    # If True, each commit() expires all instances. Attribute and object access after
+    # the commit loads the most recent database state.
     expire_on_commit: bool
 
-    # When True, all transactions will be started as a "two phase" transaction.
-    # This allows each database to roll back the entire transaction, before each
-    # transaction is committed.
-    # Typically used with multiple binds in one logical transaction.
+    # If True, every transaction uses two-phase commit. Each bound database prepares the
+    # transaction before any database commits it. Any database can therefore still roll
+    # back the entire transaction. Two-phase commit serves a logical transaction that
+    # spans several binds.
     twophase: bool
 
-    # Determines if the session should reset itself after calling .close() or should
-    # pass in a no longer usable state, disabling re-use.
+    # If True, close() resets the session for reuse. If False, close() leaves the
+    # session unusable.
     close_resets_only: bool | _NoArg
 
 
@@ -134,16 +127,16 @@ DEFAULT_ASYNC_ENGINE_PARAMS: AsyncEngineParams = {
     # Roll back on return to release locks and transaction resources.
     "pool_reset_on_return": "rollback",
     "pool_timeout": 30.0,
-    # Reuse the most recently returned connections, which lets surplus idle connections
-    # time out on the server during low traffic.
+    # Reuse the most recently returned connections first. Surplus idle connections can
+    # then time out on the server during low traffic.
     "pool_use_lifo": True,
 }
 
 DEFAULT_ASYNC_SESSION_PARAMS: AsyncSessionParams = {
     "autoflush": True,
     "autobegin": True,
-    # An attribute expired on commit refreshes implicitly on next access, but under
-    # asyncio that I/O can run outside the async bridge and raise MissingGreenlet.
+    # An attribute expired on commit refreshes implicitly on next access. Under asyncio,
+    # that implicit I/O can run outside the async bridge and raise MissingGreenlet.
     #
     # Load relationships with selectinload() and fetch server-generated values with
     # `await session.refresh(obj, ["attr"])` instead.
@@ -171,14 +164,14 @@ def _redact_database_url(url: str | SecretStr | URL) -> str:
 def _merge_engine_params(params: AsyncEngineParams) -> AsyncEngineParams:
     """Returns DEFAULT_ASYNC_ENGINE_PARAMS overridden by `params`.
 
-    The queue-pool defaults are omitted when the resulting `poolclass` lies outside the
-    QueuePool hierarchy, because such pools reject them. Values supplied in `params` are
-    always kept.
+    The result omits the queue-pool defaults when the resulting `poolclass` lies outside
+    the QueuePool hierarchy. Such pools reject those parameters. Values supplied in
+    `params` are always kept.
     """
     merged: AsyncEngineParams = {**DEFAULT_ASYNC_ENGINE_PARAMS, **params}
 
-    # None lets the dialect choose its default pool, which is a queue pool for asyncio
-    # drivers.
+    # None lets the dialect choose its default pool. For asyncio drivers, that default
+    # is a queue pool.
     poolclass = merged.get("poolclass")
     if poolclass is None or issubclass(poolclass, QueuePool):
         return merged
@@ -220,7 +213,8 @@ def create_engine(
     """Creates an async engine from a database URL.
 
     Args:
-        url: Database URL; a SecretStr is unwrapped before use and masked in logs.
+        url: Database URL. A SecretStr is unwrapped before use. Logs show the URL
+            with its password masked.
         raise_on_exc: If True, re-raise on failure instead of returning None.
         verbose: If True, log the created engine and its pool metrics.
         **params: Async engine parameters overriding the defaults.
@@ -299,7 +293,7 @@ def create_sessionmaker(
     Supplied parameters override DEFAULT_ASYNC_SESSION_PARAMS.
 
     Args:
-        engine: Engine that produced sessions are bound to.
+        engine: Engine that the produced sessions bind to.
         verbose: If True, log the created session factory.
         **params: Async session parameters overriding the defaults.
 
@@ -333,14 +327,14 @@ async def create_session(
 
     """Creates a new session and manages a single transaction.
 
-    On success, the transaction is committed.
-    On exception (including asyncio.CancelledError), the transaction is rolled back.
-    The session is always closed upon exiting the caller's block.
+    The transaction commits when the caller's block completes. It rolls back when the
+    block raises any exception, including asyncio.CancelledError. The session always
+    closes when the block exits.
 
     Args:
         sessionmaker: Factory used to open the session.
-        raise_on_exc: If True, re-raise SQLAlchemy and unexpected errors after rollback;
-            CancelledError is always re-raised.
+        raise_on_exc: If True, re-raise SQLAlchemy and unexpected errors after rollback.
+            CancelledError is re-raised regardless.
         verbose: If True, log each lifecycle step.
         context: Label included in log records to correlate the session.
 
@@ -373,7 +367,7 @@ async def create_session(
 
             except asyncio.CancelledError as exc:
                 log_rollback("Task cancelled during transaction", exc)
-                raise  # <- preserve task cancellation
+                raise  # <- preserve the task cancellation
 
             except SQLAlchemyError as exc:
                 log_rollback("Database error during transaction", exc)

@@ -19,7 +19,7 @@ __all__ = [
     "main",
 ]
 
-# Maps each subcommand name to the dotted path of its `click.Command`; `LazyGroup`
+# Maps each subcommand name to the dotted path of its `click.Command`. `LazyGroup`
 # imports the module only when the command is resolved.
 _SUBCOMMANDS = MappingProxyType(
     {

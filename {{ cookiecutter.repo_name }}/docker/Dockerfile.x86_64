@@ -37,8 +37,8 @@ ENV PYTHONUNBUFFERED=1
 # avoid a collision with the host's `.venv` in the mount.
 ENV UV_PROJECT_ENVIRONMENT="{{ cookiecutter.docker_prefix }}/.venv"
 
-# Copy packages from the uv cache instead of hard-linking them: the build cache mount
-# and the virtual environment are on different filesystems.
+# Copy packages from the uv cache instead of hard-linking them, because the build cache
+# mount and the virtual environment are on different filesystems.
 ENV UV_LINK_MODE=copy
 
 # Compile bytecode at install time.

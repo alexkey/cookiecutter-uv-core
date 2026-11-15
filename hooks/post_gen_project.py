@@ -6,8 +6,8 @@ reads: the project instructions in `AGENTS.md`, the general instructions in
 `CLAUDE.md`, `CLAUDE.local.md`, and `.claude/skills`, where each asset appears as a
 relative symlink to its canonical copy.
 
-Cookiecutter does not reproduce symlinks from a template; this hook creates the links
-after generation instead of storing them in the template.
+Cookiecutter does not reproduce symlinks from a template. This hook therefore creates
+the links after generation instead of storing them in the template.
 """
 
 from __future__ import annotations
@@ -28,8 +28,9 @@ CLAUDE_SKILLS_DIR = Path(".claude", "skills")
 def _link(link: Path, target: Path, *, target_is_directory: bool) -> None:
     """Creates the symlink `link` pointing at `target`.
 
-    Replaces a symlink left by an earlier generation into the same output directory,
-    which Cookiecutter permits only with `--overwrite-if-exists`.
+    Replaces a symlink that an earlier generation into the same output directory left.
+    Cookiecutter generates into an existing output directory only with
+    `--overwrite-if-exists`.
 
     Leaves any other file or directory at the link location in place and reports it on
     standard error.

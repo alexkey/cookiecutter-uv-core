@@ -90,7 +90,7 @@ VIRTUALENV = $(if \
 	${UV_PROJECT_ENVIRONMENT},${UV_PROJECT_ENVIRONMENT},${CURDIR}/.venv)
 UV_LOCKFILE = $(CURDIR)/uv.lock
 
-# A set of common options for the most frequently used `uv` commands.
+# Options common to the `uv` commands below.
 UV_CMD_OPTS = \
 	--directory="$(CURDIR)" \
 	--python-preference=only-managed
@@ -152,7 +152,7 @@ DOCKER_CONTAINER_PORT ?= 8000
 DOCKER_HOST_PORT ?= 8000
 DOCKER_COMMAND ?= $(SHELL)
 
-# List of variables to pass as build args.
+# Variables to pass to the image build as build arguments.
 DOCKER_ARGS = \
 	PACKAGE_NAME \
 	DOCKER_MOUNT_POINT \
@@ -214,15 +214,11 @@ PYTEST_OPTS = \
 	--durations=$(PYTEST_DURATIONS) \
 	--override-ini="log_cli=$(PYTEST_LOG_CLI)" \
 	--override-ini="log_cli_level=$(PYTEST_LOG_CLI_LEVEL)"
-# 	--asyncio-mode=auto  # <- Manages Pytest asynchronous test execution:
-#                        #    * Creates new event loop per test
-#                        #    * Handles mixed synchronous/asynchronous tests
-#                        #    * Ensures proper loop cleanup
 PYTEST_EXTRA_OPTS ?=
 PYTEST_CUSTOM_PATH ?=
 PYTEST_DEPLOYMENT ?= http://localhost:8000
 # Shell commands that `make autotest` runs before Pytest, such as `export` statements
-# for the system tests; the default `:` is a no-op.
+# for the system tests. The default `:` does nothing.
 define PYTEST_EXPORTS
 :
 endef
@@ -259,7 +255,7 @@ endef
 
 all:
 	@echo "$(PACKAGE_NAME) $(PACKAGE_VERSION) ($(OS) @ $(MACHINE) [$(VIRTUALENV)])"
-	@echo "Type \`make help\` for a list of available targets"
+	@echo "Run \`make help\` to list the available targets"
 
 .PHONY: env-check
 # target: env-check - Check the local environment for requirements
@@ -419,7 +415,7 @@ endif
 ifdef PYTEST_EXTRA_OPTS
 	$(info PYTEST_EXTRA_OPTS -> `$(PYTEST_EXTRA_OPTS)`)
 else
-	$(info PYTEST_EXTRA_OPTS: Use "--skip-slow" to exclude slow tests)
+	$(info PYTEST_EXTRA_OPTS: Use "--skip-slow" to skip slow tests)
 endif
 
 ifdef PYTEST_CUSTOM_PATH
@@ -432,7 +428,7 @@ endif
 ifdef PYTEST_DEPLOYMENT
 	$(info PYTEST_DEPLOYMENT -> `$(PYTEST_DEPLOYMENT)`)
 else
-	$(info PYTEST_DEPLOYMENT: Specify the deployed service URL, e.g., \
+	$(info PYTEST_DEPLOYMENT: Specify the deployed service URL, such as \
 		"http://localhost:8000" for the local environment)
 endif
 
@@ -454,9 +450,8 @@ venv: env-check-python
 .PHONY: requirements
 # target: requirements - Update the project's lockfile
 requirements: env-check-python
-# If the project lockfile (`uv.lock`) does not exist, it will be created.
-# If a lockfile is present, its contents will be used as preferences for the
-# resolution process.
+# `uv lock` creates `uv.lock` when the file does not exist. An existing lockfile
+# supplies the preferred versions for the resolution.
 	@$(UV) lock $(UV_CMD_OPTS) $(UV_LOCK_EXTRA_OPTS)
 
 .PHONY: requirements-refresh
@@ -486,7 +481,7 @@ requirements-up: env-check-venv
 	@$(MAKE) install
 
 .PHONY: requirements-check
-# target: requirements-check - List and validate packages installed in an environment
+# target: requirements-check - List and validate the packages installed in the virtual environment
 requirements-check: env-check-python env-check-venv
 	$(info UV_PIP_LIST_FORMAT -> `$(UV_PIP_LIST_FORMAT)`)
 
@@ -521,9 +516,8 @@ force-install:
 .PHONY: dist
 # target: dist - Build Python packages
 dist: env-check-python
-# The default build strategy: build a source distribution ("sdist") from the
-# source directory, and a binary distribution ("wheel") from the source
-# distribution.
+# By default, `uv build` builds a source distribution from the source directory and a
+# wheel from that source distribution.
 	@$(UV) build $(UV_CMD_OPTS) $(UV_BUILD_OPTS) $(UV_BUILD_EXTRA_OPTS) \
 		"$(CURDIR)"
 
@@ -550,7 +544,7 @@ docker-build: env-check-docker env-check-lockfile
 	"$(CURDIR)"
 
 .PHONY: docker-run
-# target: docker-run - Create and run a new container from an image (temporarily)
+# target: docker-run - Create and run a container from the image, removed on exit
 docker-run: env-check-docker
 ifndef DOCKER_EXTRA_OPTS
 	$(info DOCKER_EXTRA_OPTS: \
@@ -589,7 +583,7 @@ docker-shell: env-check-docker
 	exec "${DOCKER_SERVICE_NAME}" "${DOCKER_COMMAND}"
 
 .PHONY: docker-clean
-# target: docker-clean - Remove all images, containers, and volumes
+# target: docker-clean - Remove every container and image on the host, and prune anonymous volumes
 docker-clean: env-check-docker
 	@$(DOCKER) ps --all -q | xargs -r $(DOCKER) container rm $(DOCKER_RM_OPTS)
 	@$(DOCKER) system prune $(DOCKER_SYSTEM_PRUNE_OPTS)
@@ -668,7 +662,7 @@ test: env-check-qa
 # target: autotest - Run the system tests
 autotest: env-check-qa
 ifndef PYTEST_DEPLOYMENT
-	$(error PYTEST_DEPLOYMENT: URL of the deployed service is required, e.g., \
+	$(error PYTEST_DEPLOYMENT: Set the URL of the deployed service, such as \
 		"http://localhost:8000" for the local environment)
 else
 	$(info PYTEST_DEPLOYMENT -> `$(PYTEST_DEPLOYMENT)`)
@@ -686,7 +680,7 @@ help: env-check
 		| $(SED) -r "s/^\s*#\s*target\s*:\s*//g"
 
 .PHONY: clean
-# target: clean - Clean the project's directory
+# target: clean - Remove the tool caches and bytecode
 clean:
 	@find "$(CURDIR)" \
 		-name ".mypy_cache" -type d -exec rm -vrf {} + -o \
@@ -696,7 +690,7 @@ clean:
 		-name "*.py[cod]" -exec rm -vf {} +
 
 .PHONY: distclean
-# target: distclean - Clean the project's build output
+# target: distclean - Remove the build and distribution output
 distclean:
 	@find "$(CURDIR)" \
 		-path "$(VIRTUALENV)" -prune -o \
@@ -708,7 +702,7 @@ distclean:
 		"$(distdir)"
 
 .PHONY: mostlyclean
-# target: mostlyclean - Delete almost everything
+# target: mostlyclean - Run both cleanups, then delete the virtual environment and the uv cache
 mostlyclean: clean distclean
 	@find "$(CURDIR)" -name .DS_Store -exec rm -vf {} +
 	@if [[ -n "$(UV_CACHE_DIR)" ]]; then \

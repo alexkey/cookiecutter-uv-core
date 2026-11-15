@@ -20,9 +20,9 @@ from {{ cookiecutter.repo_name }}.app.db.database import (
 from {{ cookiecutter.repo_name }}.logging import setup_logging
 from tests.utils import fail_without_traceback
 
-# Fixtures compose other fixtures by parameter name, which pylint reports as redefining
-# the fixture function from the outer scope. That shadowing is how pytest injects
-# fixtures and is intentional here.
+# Fixtures compose other fixtures by parameter name. Pylint reports each such parameter
+# as a redefinition of the fixture function from the outer scope. That shadowing is how
+# pytest injects fixtures and is intentional here.
 # pylint: disable=redefined-outer-name
 
 if TYPE_CHECKING:
@@ -73,7 +73,7 @@ async def _ephemeral_engine(
 
 
 def _check_connection(url: SecretStr) -> None:
-    """Raises the underlying error unless `url` can be connected to and queried."""
+    """Raises the underlying error if connecting to `url` or querying it fails."""
 
     async def _ping() -> None:
         async with (

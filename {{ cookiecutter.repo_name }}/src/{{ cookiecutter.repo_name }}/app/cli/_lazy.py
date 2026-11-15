@@ -26,8 +26,8 @@ class LazyGroup(click.Group):
         """Initializes the group.
 
         Args:
-            lazy_subcommands: Map of command name to the dotted path of its
-                click.Command.
+            lazy_subcommands: Map of each command name to the dotted path of its
+                `click.Command`.
         """
         super().__init__(*args, **kwargs)
         self.lazy_subcommands: dict[str, str] = dict(lazy_subcommands or {})
