@@ -1,0 +1,12 @@
+cookiecutter-uv-core  0.9.0  2026-11-16  Alex Key  <alexk3y@gmail.com>
+
+* Initial release: a Cookiecutter template for Python services managed with uv.
+
+* The generated project is a typed package in the src layout with layered
+  configuration through Pydantic, structured logging through structlog, asynchronous
+  SQLAlchemy access to PostgreSQL, and a Click command-line interface.
+
+* A Makefile drives dependency management, code quality checks, tests, and Docker
+  images for x86_64 and ARM64.
+
+* Instructions and skills for the Claude Code and OpenAI Codex coding agents.

@@ -94,6 +94,12 @@ form ``gh:<owner>/<repo>``::
 
     uvx cookiecutter -o </path/to/dir> gh:alexkey/cookiecutter-uv-core
 
+The ``VERSION`` file holds the template version, and ``Changelog`` records the changes
+of each release. Each release has a Git tag of the form ``v<version>``. To generate from
+a specific release, pass its tag to ``--checkout``::
+
+    uvx cookiecutter -o </path/to/dir> --checkout v0.9.0 gh:alexkey/cookiecutter-uv-core
+
 Cookiecutter prompts for the following values and shows the default of each. Press Enter
 to accept a default:
 
