@@ -108,7 +108,8 @@ to accept a default:
 * ``license`` - the `SPDX license identifier`_.
 * ``uv_version`` and ``python_version`` - the pinned *uv* and CPython versions. The
   generated code uses explicit lazy imports and therefore requires a ``python_version``
-  of 3.15 or later. `Changing the Python Version`_ lists the files that pin it.
+  of 3.15 or later. `Changing the Python and uv Versions`_ lists the files that pin
+  them.
 * ``docker_build_platform`` - the target platform of Docker image builds.
 * ``redis_image_tag`` and ``postgres_image_tag`` - the image tags of the Docker Compose
   services.
@@ -232,17 +233,36 @@ Confirm the result, then run the checks and tests against the upgraded packages:
     make lint
     make test
 
-Changing the Python Version
----------------------------
+Changing the Python and uv Versions
+-----------------------------------
 
-The ``python_version`` prompt sets the CPython release of a new project, and
-``cookiecutter.json`` holds its default. The generated code uses explicit lazy imports
-and therefore requires 3.15 or later. Replace the lazy imports with regular imports and
-adapt the CLI startup tests in ``tests/main/app/cli/test_cli.py`` before switching to an
-earlier release. Releases before 3.14 also reject ``except A, B:`` without parentheses.
-Releases before 3.12 also reject type parameter lists and ``type`` aliases.
+The ``python_version`` and ``uv_version`` prompts set the CPython and *uv* releases of
+a new project, and ``cookiecutter.json`` holds their defaults. A generated project pins
+each release in several files, and no pin follows another. Change every pin of a
+release in one change. The following sections list the pins of each release.
 
-A generated project pins the release in two forms.
+Both releases meet in the base image tag of the Dockerfiles::
+
+    ghcr.io/astral-sh/uv:<uv_version>-python<major.minor>-trixie-slim
+
+An image with this tag must exist for the new combination of releases. The uv
+`Docker guide`_ lists the published tags. A generated project holds three identical
+Dockerfiles: ``docker/Dockerfile.x86_64``, ``docker/Dockerfile.arm64``, and
+``docker/Dockerfile.aarch64``. The Makefile selects one by the output of ``uname -m``.
+Edit the tag in all three files.
+
+.. _`Docker guide`: https://docs.astral.sh/uv/guides/integration/docker/
+
+Python
+^^^^^^
+
+The generated code uses explicit lazy imports and therefore requires 3.15 or later.
+Replace the lazy imports with regular imports and adapt the CLI startup tests in
+``tests/main/app/cli/test_cli.py`` before switching to an earlier release. Releases
+before 3.14 also reject ``except A, B:`` without parentheses. Releases before 3.12 also
+reject type parameter lists and ``type`` aliases.
+
+A generated project pins the Python release in two forms.
 
 The full version, such as ``3.15.2``:
 
@@ -254,14 +274,12 @@ The full version, such as ``3.15.2``:
 The major and minor version, such as ``3.15``:
 
 * the ``Programming Language :: Python :: 3.15`` classifier in ``pyproject.toml``;
-* the ``-python3.15-`` part of the base image tag in ``docker/Dockerfile.x86_64``;
+* the ``-python3.15-`` part of the base image tag in the three Dockerfiles;
 * ``py-version`` in ``pylintrc``.
 
-``Dockerfile.arm64`` and ``Dockerfile.aarch64`` are symlinks to ``Dockerfile.x86_64``.
-
-To change the release of a generated project, edit every place in both lists. A patch
-release changes only the full version. Then lock the dependencies for the new release
-and recreate the environment::
+To change the Python release, edit every place in both lists. A patch release changes
+only the full version. Then lock the dependencies for the new release and recreate the
+environment::
 
     make requirements
     make install
@@ -269,8 +287,60 @@ and recreate the environment::
 ``make requirements`` re-resolves ``uv.lock`` for the new ``requires-python``.
 ``make install`` replaces a virtual environment whose interpreter differs from the new
 release and installs the locked packages into the new environment. Rebuild the image
-with ``make docker-build`` before the next container target. A *uv* image with the tag
-``<uv_version>-python<major.minor>-trixie-slim`` must exist for the new release. Finish
+with ``make docker-build`` before the next container target. Finish with the checks and
+tests::
+
+    make lint
+    make test
+
+uv
+^^
+
+A generated project pins the *uv* release in its full version, such as ``0.13.7``:
+
+* ``UV_VERSION`` in the ``Makefile``;
+* the lower bound of the ``uv_build>=0.13.7,<0.14`` requirement in the
+  ``[build-system]`` table of ``pyproject.toml``;
+* the ``0.13.7-`` prefix of the base image tag in the three Dockerfiles.
+
+The upper bound of the ``uv_build`` requirement is the next minor release, such as
+``0.14`` for ``0.13.7``. The template derives it from ``uv_version``. A patch release
+leaves the upper bound unchanged. A minor release raises it as well, such as to
+``<0.15`` for ``0.14.0``.
+
+``UV_VERSION`` names the release that the host is expected to run.
+``make env-check-python`` prints a warning when the installed *uv* differs from it.
+Every target that locks the dependencies, installs them, builds a distribution, or
+runs the quality assurance tools runs this check first. A different release produces a
+warning, not an error.
+
+The ``uv_build`` requirement selects the build backend. The upper bound excludes the
+next minor release, which can contain breaking changes. Without it, the source
+distribution can fail to build once such a release is published, and *uv* warns about
+the missing bound. *uv* builds the project with its bundled backend when its own
+release satisfies the requirement. Otherwise, it downloads a ``uv_build`` package that
+satisfies the requirement.
+
+The image runs the *uv* release of its base image tag. That release must read the
+``uv.lock`` that the host writes. *uv* rejects a lockfile whose schema version is
+newer than its own, and the schema version changes only in minor releases. Keep the
+host and the image at the same release for that reason.
+
+To change the *uv* release, edit every place in the list. Then install the same
+release on the host. A *uv* from the standalone installer updates itself to a given
+release::
+
+    uv self update 0.13.8
+
+A *uv* from another installation method changes its release only through that method,
+such as its package manager. Confirm that the check no longer warns, then lock the
+dependencies and reinstall the project with the new release::
+
+    make env-check-python
+    make requirements
+    make install
+
+Rebuild the image with ``make docker-build`` before the next container target. Finish
 with the checks and tests::
 
     make lint

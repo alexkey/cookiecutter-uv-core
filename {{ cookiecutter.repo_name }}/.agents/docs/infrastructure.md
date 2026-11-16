@@ -19,6 +19,9 @@ credentials. Read the values from those files.
 5. Add a project file to the `ADD` instruction in the Dockerfiles when the image build
    needs it. The build copies `src/` and an explicit list of files, not the whole
    project.
+6. Change the Python or uv version in the base image tag only together with the other
+   pins of that version. The "Python and uv versions" section of
+   `.agents/docs/workflows.md` lists them.
 
 ## Image
 

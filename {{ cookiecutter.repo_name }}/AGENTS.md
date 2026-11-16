@@ -107,7 +107,7 @@ and skip the files the task does not need.
 | `.agents/docs/database.md` | write code that creates sessions, runs queries, or configures the engine |
 | `.agents/docs/conventions.md` | write or review Python code |
 | `.agents/docs/testing.md` | write, run, or debug tests |
-| `.agents/docs/workflows.md` | set up the environment, change dependencies or the Python version, add a Makefile target, build a distribution, or write an execution plan |
+| `.agents/docs/workflows.md` | set up the environment, change dependencies or the Python or uv version, add a Makefile target, build a distribution, or write an execution plan |
 | `.agents/docs/infrastructure.md` | build an image, run the Compose stack, or change anything under `docker/` |
 
 ## Maintaining these instructions

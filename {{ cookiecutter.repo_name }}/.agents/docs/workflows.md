@@ -1,7 +1,7 @@
 # Development workflows
 
-Read this before setting up the environment, changing dependencies or the Python
-version, adding a Makefile target, building a distribution, or writing an execution
+Read this before setting up the environment, changing dependencies or the Python or
+uv version, adding a Makefile target, building a distribution, or writing an execution
 plan. The Makefile is the authoritative list of targets and variables. `make help`
 lists the targets. The `make env-show-python`, `make env-show-qa`, and
 `make env-show-docker` targets print the variables with their values.
@@ -17,9 +17,10 @@ lists the targets. The `make env-show-python`, `make env-show-qa`, and
 3. Precede every new Makefile target with a `# target: <name> - <description>`
    comment and a `.PHONY` declaration. `make help` builds its list from those
    comments.
-4. Change the Python version in every place that [Python version](#python-version)
-   lists, in one change. uv rejects a `.python-version` that `requires-python`
-   excludes, and the other pins do not follow either file.
+4. Change the Python or uv version in every place that
+   [Python and uv versions](#python-and-uv-versions) lists for it, in one change. No
+   pin follows another. uv rejects a `.python-version` that `requires-python`
+   excludes.
 
 Targets take their options through Makefile variables, for example
 `make test PYTEST_EXTRA_OPTS=--skip-slow`.
@@ -43,7 +44,8 @@ make install        # sync .venv with uv.lock
   prerequisites. Most targets depend on the checks they need and stop with
   `ERROR: ...` when one fails.
 - The Makefile pins the expected uv version in `UV_VERSION`. A different installed
-  version produces a warning, not a failure.
+  version produces a warning, not a failure. Report the warning to the user instead of
+  changing the pin to match the installed version.
 - The Makefile passes `--python-preference=only-managed` to uv. uv therefore uses only
   the interpreters that it manages, at the version in `.python-version`.
 - `make install` syncs exactly: it removes packages that the lockfile does not list.
@@ -106,13 +108,22 @@ Other targets: `make requirements-tree` prints the dependency tree,
 `make requirements-refresh` refreshes cached package data before locking, and
 `make requirements UV_LOCK_EXTRA_OPTS=--upgrade-package=<name>` upgrades one package.
 
-## Python version
+## Python and uv versions
 
-The project pins one CPython release. The code uses explicit `lazy` imports and
-therefore requires 3.15 or later. Replace the `lazy` imports with regular imports and
-adapt the CLI startup tests in `tests/main/app/cli/test_cli.py` before switching to an
-earlier release. Releases before 3.14 also reject `except A, B:` without parentheses.
-Releases before 3.12 also reject type parameter lists and `type` aliases.
+The project pins one CPython release and one uv release. Both meet in the base image
+tag `ghcr.io/astral-sh/uv:<uv version>-python<major.minor>-trixie-slim`. An image
+with that tag must exist for the new combination. The tag appears in each of the
+three Dockerfiles: `docker/Dockerfile.x86_64`, `docker/Dockerfile.arm64`, and
+`docker/Dockerfile.aarch64`. Rule 4 of `.agents/docs/infrastructure.md` requires
+them to stay identical.
+
+### Python
+
+The code uses explicit `lazy` imports and therefore requires 3.15 or later. Replace
+the `lazy` imports with regular imports and adapt the CLI startup tests in
+`tests/main/app/cli/test_cli.py` before switching to an earlier release. Releases
+before 3.14 also reject `except A, B:` without parentheses. Releases before 3.12 also
+reject type parameter lists and `type` aliases.
 
 The release appears in two forms.
 
@@ -126,8 +137,7 @@ The full version, such as `3.15.2`:
 The major and minor version, such as `3.15`:
 
 - The `Programming Language :: Python :: <version>` classifier in `pyproject.toml`.
-- The `-python<version>-` part of the base image tag in `docker/Dockerfile.x86_64`.
-  `Dockerfile.arm64` and `Dockerfile.aarch64` are symlinks to that file.
+- The `-python<version>-` part of the base image tag in the three Dockerfiles.
 - `py-version` in `pylintrc`.
 
 To change the version:
@@ -137,9 +147,46 @@ To change the version:
 3. Run `make install`. It replaces a `.venv` whose interpreter differs from the new
    version and installs the locked packages into the new environment. `make venv` is
    not needed.
-4. Run `make docker-build` before the next container target. The uv image with the
-   tag `<uv version>-python<major.minor>-trixie-slim` must exist.
+4. Run `make docker-build` before the next container target.
 5. Run the checks from the Rules section of `AGENTS.md`.
+
+### uv
+
+The uv version appears in its full form, such as `0.13.7`:
+
+- `UV_VERSION` in the `Makefile`.
+- The lower bound of the `uv_build>=<version>,<next minor>` requirement in
+  `[build-system]` of `pyproject.toml`. The upper bound is the next minor release,
+  such as `<0.14` for `0.13.7`. A minor release raises the upper bound as well.
+- The `<version>-` prefix of the base image tag in the three Dockerfiles.
+
+The pins serve different consumers:
+
+- `UV_VERSION` is the version that the host is expected to run.
+  `make env-check-python` warns when the installed uv differs. It does not install
+  or select a uv version.
+- The `uv_build` requirement selects the build backend. Its upper bound excludes the
+  next minor release, which can contain breaking changes. Keep the upper bound when
+  changing the version. uv warns about a requirement without one. uv builds the
+  project with its bundled backend when its own version satisfies the requirement
+  and downloads a matching `uv_build` package otherwise.
+- The image runs the uv of its base image, and that uv reads the `uv.lock` that the
+  host writes. uv rejects a lockfile with a newer schema version than its own, and
+  the schema version changes only in minor releases. Keep the host and the image at
+  the same uv version for that reason.
+
+To change the version:
+
+1. Edit every place above.
+2. Ask the user to install the same uv version on the host. Do not install or update
+   uv on your own. A uv from the standalone installer updates with
+   `uv self update <version>`. A uv from another installation method updates only
+   through that method.
+3. Run `make env-check-python` and confirm that it prints no version warning.
+4. Run `make requirements` and `make install` to lock and reinstall the project with
+   the new version.
+5. Run `make docker-build` before the next container target.
+6. Run the checks from the Rules section of `AGENTS.md`.
 
 ## Building and versioning
 
