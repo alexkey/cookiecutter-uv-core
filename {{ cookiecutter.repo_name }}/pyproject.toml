@@ -31,9 +31,9 @@ classifiers = [
 requires-python = "~={{ cookiecutter.python_version }}"
 dependencies = [
     "alembic~=1.20.0",
-    "celery~=5.6.3",
+    "celery~=5.7.0",
     "click~=8.5.0",
-    "fastapi~=0.162.0",
+    "fastapi~=0.163.1",
     "httpx2~=2.16.0",
     "jinja2~=3.1.6",
     "pydantic-settings~=2.16.0",
@@ -55,7 +55,10 @@ dependencies = [
 {{ cookiecutter.service_name }} = "{{ cookiecutter.repo_name }}.app.cli:main"
 
 [build-system]
-requires = ["uv_build>={{ cookiecutter.uv_version }}"]
+# The upper bound excludes the next minor release of `uv_build`, which can contain
+# breaking changes. Raise both bounds together with `UV_VERSION` in the Makefile.
+{%- set uv_major, uv_minor = cookiecutter.uv_version.split('.')[:2] %}
+requires = ["uv_build>={{ cookiecutter.uv_version }},<{{ uv_major }}.{{ uv_minor | int + 1 }}"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
@@ -117,7 +120,7 @@ check = [
     "ty~=0.0.97",
 ]
 test = [
-    "pytest-asyncio~=1.4.0",
+    "pytest-asyncio~=1.5.0",
     "pytest-repeat>=0.9.4",
     "pytest~=9.2.0",
 ]
