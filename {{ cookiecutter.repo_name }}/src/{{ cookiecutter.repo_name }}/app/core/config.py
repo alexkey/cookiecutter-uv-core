@@ -22,22 +22,39 @@ DATABASE_DRIVER = "postgresql+asyncpg"
 
 
 def check_database_url(value: SecretStr) -> SecretStr:
+    """Validates a database URL for the SQLAlchemy driver.
+
+    Error messages never quote the URL, which can hold a password.
+
+    Args:
+        value: Database URL to validate.
+
+    Returns:
+        The input value unchanged.
+
+    Raises:
+        ValueError: If the URL cannot be parsed, uses a driver other than
+            `DATABASE_DRIVER`, has no host and no socket directory, or has no database
+            name.
+    """
     _url = value.get_secret_value()
     try:
         url = sa_make_url(_url)
-    except ArgumentError as exc:
-        raise ValueError("invalid database URL") from exc
+    except ArgumentError, ValueError:
+        # The error for a malformed port quotes URL text that can include the password.
+        raise ValueError("invalid database URL") from None
 
     driver = url.drivername
     if driver != DATABASE_DRIVER:
         raise ValueError(
-            f"database URL must use `{DATABASE_DRIVER}` driver, not `{driver}`"
+            f"database URL must use the `{DATABASE_DRIVER}` driver, not `{driver}`"
         )
 
     if not (url.host or url.query.get("host")):
-        raise ValueError("database URL must include a host or socket directory")
+        raise ValueError("database URL must include a host or a socket directory")
 
-    if url.database is None:
+    # A URL that ends in a bare slash parses to an empty name rather than None.
+    if not url.database:
         raise ValueError("database URL must include a database name")
 
     return value
@@ -53,6 +70,15 @@ DatabaseURL = Annotated[SecretStr, AfterValidator(check_database_url)]
 
 
 class Settings(BaseSettings):
+    """Service settings read from environment variables and an environment file.
+
+    Each field reads the environment variable of the same name with the
+    `SettingsConfigDict["env_prefix"]` prefix. Environment variables take precedence
+    over the environment file.
+
+    Obtain instances through the cached accessor `get_settings()`.
+    """
+
     ##
     # Logging
 
@@ -61,7 +87,7 @@ class Settings(BaseSettings):
         "console",
         description=f"Logging output format: {', '.join(get_args(LogFormatT))}",
     )
-    LOG_COLORS: bool = Field(True, description="Use colors for a nicer output")
+    LOG_COLORS: bool = Field(True, description="Colorize console output on a TTY")
     LOG_VERBOSE: bool = Field(False, description="Enable verbose logs")
 
     ##
@@ -72,32 +98,34 @@ class Settings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(
-        # Whether to hide inputs when printing errors.
+        # Keep raw values out of validation errors.
         hide_input_in_errors=True,
-        # Forbid extra attributes during model initialization.
+        # Reject unknown initialization arguments and environment file entries. Unknown
+        # environment variables are ignored, not rejected.
         extra="forbid",
-        # Whether environment and CLI variable names should be read with
-        # case-sensitivity.
+        # Match environment and CLI variable names case-sensitively.
         case_sensitive=True,
-        # Whether to allow partial updates on nested model default object fields.
+        # Disallow partial updates of the default objects of nested model fields.
         nested_model_default_partial_update=False,
         # Prefix for all environment variables.
         env_prefix="{{ cookiecutter.env_prefix }}",
-        # The env file(s) to load settings values from; None indicates that environment
-        # variables should not be loaded from an env file.
+        # Resolved at import time and used only when `Settings` is instantiated
+        # directly. `get_settings()` resolves the environment file on its first call and
+        # on reload.
         env_file=_resolve_env_file(),
-        # The env file encoding.
+        # Encoding of the environment file.
         env_file_encoding="utf-8",
-        # Ignore environment variables where the value is an empty string.
+        # Read an empty value as an empty string instead of falling back to the field
+        # default.
         env_ignore_empty=False,
-        # The nested env values delimiter.
+        # Delimiter between the levels of a nested field name in an environment
+        # variable name.
         env_nested_delimiter="__",
-        # The env string value that should be parsed (e.g. "null", "void", "None", etc.)
-        # into `None`.
-        env_parse_none_str=None,  # <- no parsing should occur
-        # Parse enum field names to values.
-        env_parse_enums=None,  # <- no parsing should occur
-        # The secret files directory or a sequence of directories.
+        # `None` disables parsing a sentinel string, such as "null", into `None`.
+        env_parse_none_str=None,
+        # `None` disables parsing enum member names into enum values.
+        env_parse_enums=None,
+        # `None` disables reading settings from secret files.
         secrets_dir=None,
     )
 
@@ -112,7 +140,11 @@ def get_settings(*, reload: bool = False) -> Settings:
 
     Args:
         reload: If `True`, discard the cached instance and rebuild it from the
-            environment and env file before returning.
+            environment and the environment file before returning.
+
+    Raises:
+        pydantic.ValidationError: If a required setting is missing or a setting is
+            invalid.
     """
     if reload:
         _get_settings.cache_clear()

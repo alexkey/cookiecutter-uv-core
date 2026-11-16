@@ -14,6 +14,9 @@ from {{ cookiecutter.repo_name }}.app.db.database import (
 )
 
 if TYPE_CHECKING:
+    from pydantic import SecretStr
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
     from {{ cookiecutter.repo_name }}.app.db.database import SessionMakerT
 
 
@@ -44,7 +47,7 @@ class TestDatabaseRoundTrip:
             result = await session.execute(sa_text(f"SELECT id FROM {items_table}"))
             assert result.scalars().all() == []
 
-    async def test_applies_isolation_level(self, database_url: str) -> None:
+    async def test_applies_isolation_level(self, database_url: SecretStr) -> None:
         engine = create_engine(
             database_url, raise_on_exc=True, isolation_level="SERIALIZABLE"
         )
@@ -59,18 +62,18 @@ class TestDatabaseRoundTrip:
         finally:
             await dispose_engine(engine)
 
-    async def test_dispose_closes_pooled_connections(self, database_url: str) -> None:
-        engine = create_engine(database_url, raise_on_exc=True)
-        assert engine is not None
-
-        async with engine.connect() as conn:
+    async def test_dispose_closes_pooled_connections(
+        self, database_engine: AsyncEngine
+    ) -> None:
+        async with database_engine.connect() as conn:
             await conn.execute(sa_text("SELECT 1"))
 
-        pool = engine.pool
+        pool = database_engine.pool
         assert isinstance(pool, AsyncAdaptedQueuePool)
         assert pool.checkedin() == 1
 
-        await dispose_engine(engine)
-        fresh_pool = engine.pool
-        assert isinstance(fresh_pool, AsyncAdaptedQueuePool)
-        assert fresh_pool.checkedin() == 0
+        await dispose_engine(database_engine)
+
+        # Disposal installs a new pool on the engine. Only the original pool shows
+        # whether its idle connection was closed.
+        assert pool.checkedin() == 0

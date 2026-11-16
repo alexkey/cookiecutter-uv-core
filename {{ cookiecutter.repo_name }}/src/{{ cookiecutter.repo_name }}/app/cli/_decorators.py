@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 import functools
 from typing import TYPE_CHECKING
+lazy import asyncio
 
-from {{ cookiecutter.repo_name }} import (
+lazy from {{ cookiecutter.repo_name }} import (
     get_logger,
     get_settings,
     is_level_enabled,
     setup_logging,
 )
-from {{ cookiecutter.repo_name }}.app import (
+lazy from {{ cookiecutter.repo_name }}.app import (
     __project_name__,
     __version__,
 )
@@ -24,9 +24,6 @@ __all__ = [
     "configure",
     "run_async",
 ]
-
-
-logger = get_logger(__name__)
 
 
 def configure[**P, R](func: Callable[P, R]) -> Callable[P, R]:
@@ -47,10 +44,14 @@ def configure[**P, R](func: Callable[P, R]) -> Callable[P, R]:
 
 
 def announce[**P, R](func: Callable[P, R]) -> Callable[P, R]:
-    """Runs the startup announcement before a command body executes."""
+    """Logs the startup announcement before a command body runs."""
 
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        # A module-level logger would load structlog whenever the group's `--help`
+        # imports this module.
+        logger = get_logger(__name__)
+
         settings = get_settings()
         if is_level_enabled(logger):
             logger.debug("%r", settings)

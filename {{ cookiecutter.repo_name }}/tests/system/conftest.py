@@ -17,16 +17,19 @@ from {{ cookiecutter.repo_name }}.app.db.database import (
     create_sessionmaker,
     dispose_engine,
 )
+from {{ cookiecutter.repo_name }}.logging import setup_logging
+from tests.utils import fail_without_traceback
 
-# Fixtures compose other fixtures by parameter name, which pylint reports as redefining
-# the fixture function from the outer scope. That shadowing is how pytest injects
-# fixtures and is intentional here.
+# Fixtures compose other fixtures by parameter name. Pylint reports each such parameter
+# as a redefinition of the fixture function from the outer scope. That shadowing is how
+# pytest injects fixtures and is intentional here.
 # pylint: disable=redefined-outer-name
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterator
     from typing import Any
 
+    from pydantic import SecretStr
     from sqlalchemy.ext.asyncio import AsyncEngine
 
     from {{ cookiecutter.repo_name }}.app.db.database import SessionMakerT
@@ -36,19 +39,32 @@ _CONNECT_TIMEOUT = 5.0
 _SCHEMA_PREFIX = "itest"
 
 
-def _resolve_database_url() -> str | None:
+def _resolve_database_url() -> SecretStr | None:
+    """Returns the configured database URL, or None if it is not set.
+
+    Raises:
+        ValidationError: If any other required setting is missing or a setting is
+            invalid.
+    """
     try:
         settings = get_settings(reload=True)
-    except ValidationError:
-        return None
+    except ValidationError as exc:
+        if all(
+            error["type"] == "missing" and error["loc"] == ("DATABASE_URL",)
+            for error in exc.errors()
+        ):
+            return None
+        raise
 
-    return settings.DATABASE_URL.get_secret_value()  # pylint: disable=no-member
+    return settings.DATABASE_URL
 
 
 @asynccontextmanager
-async def _ephemeral_engine(url: str, **kwargs: Any) -> AsyncIterator[AsyncEngine]:
+async def _ephemeral_engine(
+    url: SecretStr, **kwargs: Any
+) -> AsyncGenerator[AsyncEngine]:
     """Yields a single-use NullPool engine, disposed when the block exits."""
-    engine = create_async_engine(url, poolclass=NullPool, **kwargs)
+    engine = create_async_engine(url.get_secret_value(), poolclass=NullPool, **kwargs)
 
     try:
         yield engine
@@ -56,61 +72,90 @@ async def _ephemeral_engine(url: str, **kwargs: Any) -> AsyncIterator[AsyncEngin
         await engine.dispose()
 
 
-def _can_connect(url: str) -> bool:
-    """Reports whether a connection to `url` can be established and queried."""
+def _check_connection(url: SecretStr) -> None:
+    """Raises the underlying error if connecting to `url` or querying it fails."""
 
     async def _ping() -> None:
-        async with _ephemeral_engine(
-            url, connect_args={"timeout": _CONNECT_TIMEOUT}
-        ) as engine:
-            async with engine.connect() as conn:
-                await conn.execute(sa_text("SELECT 1"))
+        async with (
+            _ephemeral_engine(
+                url, connect_args={"timeout": _CONNECT_TIMEOUT}
+            ) as engine,
+            engine.connect() as conn,
+        ):
+            await conn.execute(sa_text("SELECT 1"))
 
-    try:
-        asyncio.run(_ping())
-    except Exception:  # pylint: disable=broad-exception-caught
-        return False
-
-    return True
+    asyncio.run(_ping())
 
 
-async def _run_ddl(url: str, statement: str) -> None:
+async def _run_ddl(url: SecretStr, statement: str) -> None:
     """Executes a single DDL statement."""
-    async with _ephemeral_engine(url) as engine:
-        async with engine.begin() as conn:
-            await conn.execute(sa_text(statement))
+    async with _ephemeral_engine(url) as engine, engine.begin() as conn:
+        await conn.execute(sa_text(statement))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def app_logging() -> None:
+    """Configures logging as the application does."""
+    setup_logging("debug", "console")
 
 
 @pytest.fixture(scope="session")
-def database_url() -> str:
-    url = _resolve_database_url()
+def database_url() -> SecretStr:
+    """The configured database URL, verified to accept connections.
 
-    if not url:
-        pytest.skip(f"{_DB_URL_VAR} is not set")
+    Fails each requesting test without a traceback when the URL is unset or invalid, or
+    the database is unreachable.
+    """
+    try:
+        url = _resolve_database_url()
+    except ValidationError as exc:
+        # The error input holds the raw URL, including its password.
+        reasons = "; ".join(
+            f"{'.'.join(map(str, error['loc']))}: {error['msg']}"
+            for error in exc.errors(include_input=False)
+        )
+        fail_without_traceback(f"invalid settings: {reasons}")
 
-    if not _can_connect(url):
-        pytest.skip(f"database for {_DB_URL_VAR} is not reachable")
+    # Explicit because an empty `SecretStr` evaluates to `False`.
+    if url is None:
+        fail_without_traceback(
+            f"`{_DB_URL_VAR}` is not set (pass `--skip-db` to skip these tests)"
+        )
+
+    try:
+        _check_connection(url)
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        fail_without_traceback(
+            f"database for `{_DB_URL_VAR}` is not reachable: {exc!r}"
+        )
 
     return url
 
 
 @pytest.fixture(scope="session")
-def database_schema(database_url: str) -> Iterator[str]:
+def database_schema(database_url: SecretStr) -> Iterator[str]:
     """A dedicated schema for the run, dropped with CASCADE afterward."""
     schema = f"{_SCHEMA_PREFIX}_{uuid4().hex[:8]}"
 
     def run_ddl(statement: str) -> None:
         asyncio.run(_run_ddl(database_url, statement))
 
-    run_ddl(f"CREATE SCHEMA {schema}")
+    try:
+        run_ddl(f"CREATE SCHEMA {schema}")
+    except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+        fail_without_traceback(f"cannot create schema `{schema}`: {exc!r}")
+
     try:
         yield schema
     finally:
-        run_ddl(f"DROP SCHEMA {schema} CASCADE")
+        try:
+            run_ddl(f"DROP SCHEMA {schema} CASCADE")
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+            fail_without_traceback(f"cannot drop schema `{schema}`: {exc!r}")
 
 
 @pytest.fixture
-async def database_engine(database_url: str) -> AsyncIterator[AsyncEngine]:
+async def database_engine(database_url: SecretStr) -> AsyncIterator[AsyncEngine]:
     """A real engine bound to the configured database, disposed after the test."""
     engine = create_engine(database_url, raise_on_exc=True)
 
@@ -131,7 +176,7 @@ def database_sessionmaker(database_engine: AsyncEngine) -> SessionMakerT:
 async def items_table(
     database_engine: AsyncEngine, database_schema: str
 ) -> AsyncIterator[str]:
-    """Creates an isolated throwaway table in the run schema and drops it after."""
+    """Creates an isolated throwaway table in the run schema, dropped after the test."""
     table = f"{database_schema}.items"
 
     async with database_engine.begin() as conn:

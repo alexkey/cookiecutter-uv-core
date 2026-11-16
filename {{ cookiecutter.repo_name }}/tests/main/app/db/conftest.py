@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Self
 
 import pytest
 
@@ -11,7 +12,7 @@ class FakeTransaction:
         self.exited = False
         self.exit_exc_type: type[BaseException] | None = None
 
-    async def __aenter__(self) -> FakeTransaction:
+    async def __aenter__(self) -> Self:
         self.entered = True
         return self
 
@@ -36,7 +37,7 @@ class FakeSession:
         self.begin_called = True
         return self.transaction
 
-    async def __aenter__(self) -> FakeSession:
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(

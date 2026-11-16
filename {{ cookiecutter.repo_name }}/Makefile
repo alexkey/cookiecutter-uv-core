@@ -17,13 +17,14 @@ OS = $(shell uname -s)
 CURDIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 srcdir = $(CURDIR)/src
 testdir = $(CURDIR)/tests
+scriptdir = $(CURDIR)/etc/scripts
 builddir = $(CURDIR)/build
 distdir = $(CURDIR)/dist
 
 PACKAGE_NAME = {{ cookiecutter.repo_name }}
 PACKAGE_VERSION ?= $(strip \
 	$(shell \
-		grep "^ *version *= *" "${CURDIR}/pyproject.toml" \
+		grep "^ *version *= *" "${PYTHON_PROJECT_FILE}" \
 		| tr -d '"' \
 		| cut -d " " -f3 \
 	) \
@@ -60,11 +61,11 @@ GIT = git
 ##
 # Functions
 
-which_helper = $(shell \
-	[[ -n "$(shell which ${1} 2>/dev/null)" ]] \
-		|| echo "echo ERROR: Can\'t find the command: ${1} && \
-		exit ${ERROR_ENVIRONMENT}" \
-)
+error_helper = { echo "ERROR: ${1}" ; exit ${ERROR_ENVIRONMENT} ; }
+
+# Fails unless command $1 is on PATH, resolved through launcher $2 when one is given.
+which_helper = ${2} which ${1} >/dev/null \
+	|| $(call error_helper,Cannot find the command: \`${1}\`)
 
 version_helper = $(shell ${1} --version \
 	| ${GREP} -o "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*")
@@ -73,6 +74,7 @@ version_helper = $(shell ${1} --version \
 # Python
 
 PYTHON_VERSION_FILE ?= $(CURDIR)/.python-version
+PYTHON_PROJECT_FILE ?= $(CURDIR)/pyproject.toml
 
 UV = uv
 UV_VERSION = {{ cookiecutter.uv_version }}
@@ -81,24 +83,30 @@ UV_CACHE_DIR ?=
 ifeq ($(shell which ${UV}),)
 	_install_hints_python += \
 		Install uv: https://docs.astral.sh/uv/getting-started/installation/
-	UV_CACHE_DIR = "$(HOME)/.cache/uv"
+	UV_CACHE_DIR = $(HOME)/.cache/uv
 endif
 
 VIRTUALENV = $(if \
 	${UV_PROJECT_ENVIRONMENT},${UV_PROJECT_ENVIRONMENT},${CURDIR}/.venv)
 UV_LOCKFILE = $(CURDIR)/uv.lock
 
-# A set of common options for the most frequently used `uv` commands.
+# Options common to the `uv` commands below.
 UV_CMD_OPTS = \
 	--directory="$(CURDIR)" \
 	--python-preference=only-managed
 UV_BUILD_OPTS = \
 	--verify-hashes
 
+UV_RUN = $(UV) run $(UV_CMD_OPTS) --locked
+UV_RUN_NO_SYNC = $(UV) run $(UV_CMD_OPTS) --no-sync
+
+UV_PIP_OPTS = \
+	$(UV_CMD_OPTS) \
+	--python="$(VIRTUALENV)"
 UV_PIP_LIST_FORMAT ?= freeze
 UV_PIP_LIST_OPTS = \
 	--format="$(UV_PIP_LIST_FORMAT)"
-UV_PIP_LIST = $(UV) pip list $(UV_CMD_OPTS) $(UV_PIP_LIST_OPTS)
+UV_PIP_LIST = $(UV) pip list $(UV_PIP_OPTS) $(UV_PIP_LIST_OPTS)
 
 UV_LOCK_EXTRA_OPTS ?=
 UV_SYNC_EXTRA_OPTS ?=
@@ -108,6 +116,15 @@ INSTALL_EXTRAS ?=
 ifdef INSTALL_EXTRAS
 	UV_SYNC_OPT_DEPS = $(foreach extra,${INSTALL_EXTRAS}, --extra=${extra})
 endif
+
+which_uv_helper = $(call which_helper,${1},${UV_RUN_NO_SYNC})
+
+define outdated_helper
+	@set -o pipefail ; \
+		$(UV) tree $(UV_CMD_OPTS) \
+			--color=never --frozen --outdated --depth=1 --all-groups --universal \
+		| { $(GREP) $(GREP_OPTS) --color=never "\(latest: " || true ; }
+endef
 
 ##
 # Docker
@@ -135,7 +152,7 @@ DOCKER_CONTAINER_PORT ?= 8000
 DOCKER_HOST_PORT ?= 8000
 DOCKER_COMMAND ?= $(SHELL)
 
-# List of variables to pass as build args.
+# Variables to pass to the image build as build arguments.
 DOCKER_ARGS = \
 	PACKAGE_NAME \
 	DOCKER_MOUNT_POINT \
@@ -171,6 +188,7 @@ NOTES_EXCLUDE_FILTER = \
 
 DEPTRY = deptry
 RUFF = ruff
+TY = ty
 MYPY = mypy
 MYPY_OPTS = \
 	--install-types
@@ -184,7 +202,6 @@ PYTEST_DURATIONS ?= 10
 PYTEST_LOG_CLI ?= false
 PYTEST_LOG_CLI_LEVEL ?= INFO
 
-# Live logging needs capture off.
 ifeq ($(PYTEST_LOG_CLI),true)
 	PYTEST_CAPTURE ?= no
 else
@@ -197,34 +214,38 @@ PYTEST_OPTS = \
 	--durations=$(PYTEST_DURATIONS) \
 	--override-ini="log_cli=$(PYTEST_LOG_CLI)" \
 	--override-ini="log_cli_level=$(PYTEST_LOG_CLI_LEVEL)"
-# 	--asyncio-mode=auto  # <- Manages Pytest asynchronous test execution:
-#                        #    * Creates new event loop per test
-#                        #    * Handles mixed synchronous/asynchronous tests
-#                        #    * Ensures proper loop cleanup
 PYTEST_EXTRA_OPTS ?=
 PYTEST_CUSTOM_PATH ?=
 PYTEST_DEPLOYMENT ?= http://localhost:8000
-# Optionally add exports to be passed to Pytest HERE ==>
+# Shell commands that `make autotest` runs before Pytest, such as `export` statements
+# for the system tests. The default `:` does nothing.
 define PYTEST_EXPORTS
 :
 endef
 
 define show_notes_helper
-	@for tag in $(PACKAGE_NOTES); do \
+	@files="$$( \
+		${1} \
+		| sort -u \
+		| ${SED} '${NOTES_EXCLUDE_FILTER}' \
+	)" ; \
+	if [[ -z "$${files}" ]]; then \
+		echo "No files to search for notes" ; \
+		exit 0 ; \
+	fi ; \
+	set -f ; IFS=$$'\n' ; \
+	for tag in $(PACKAGE_NOTES); do \
 		echo -e "\n#---\n# $${tag}\n#---\n" ; \
-		$(GREP) $(GREP_OPTS) --context=$(NOTES_CONTEXT) "\b$${tag}(\([^)]*\))?:" $$( \
-			${1} \
-			| sort -u \
-			| ${SED} '${NOTES_EXCLUDE_FILTER}' \
-		) \
-		|| echo "Tag $${tag} not found" ; \
+		$(GREP) $(GREP_OPTS) --context=$(NOTES_CONTEXT) \
+			"\b$${tag}(\([^)]*\))?:" \
+		$${files} || echo "Tag $${tag} not found" ; \
 	done
 endef
 
 define pytest_helper
 	@path="$(testdir)/$(1)" ; \
 	if [[ -n "$(PYTEST_CUSTOM_PATH)" ]]; then path+="/$(PYTEST_CUSTOM_PATH)" ; fi ; \
-		$(2) ; $(PYTEST) $(PYTEST_EXTRA_OPTS) $(PYTEST_OPTS) "$${path}"
+		$(2) ; $(UV_RUN) $(PYTEST) $(PYTEST_EXTRA_OPTS) $(PYTEST_OPTS) "$${path}"
 endef
 
 
@@ -234,7 +255,7 @@ endef
 
 all:
 	@echo "$(PACKAGE_NAME) $(PACKAGE_VERSION) ($(OS) @ $(MACHINE) [$(VIRTUALENV)])"
-	@echo "Type \`make help\` for a list of available targets"
+	@echo "Run \`make help\` to list the available targets"
 
 .PHONY: env-check
 # target: env-check - Check the local environment for requirements
@@ -244,15 +265,19 @@ ifdef _install_hints
 endif
 	@$(call which_helper,${SED})
 	@$(call which_helper,${GREP})
+
+.PHONY: env-check-git
+# target: env-check-git - Check the requirements for Git
+env-check-git:
 	@$(call which_helper,${GIT})
+	@${GIT} rev-parse --show-toplevel >/dev/null
 
 .PHONY: env-check-python
 # target: env-check-python - Check the requirements for Python
 env-check-python:
-ifeq ($(wildcard ${PYTHON_VERSION_FILE}),)
-	$(error The Python version must be set explicitly in the file \
-		`${PYTHON_VERSION_FILE}`)
-endif
+	@[[ -f "$(PYTHON_VERSION_FILE)" ]] \
+		|| $(call error_helper,The Python version must be set explicitly in the file \
+			\`$(PYTHON_VERSION_FILE)\`)
 ifdef _install_hints_python
 	$(info ${_install_hints_python})
 endif
@@ -260,33 +285,29 @@ endif
 
 	@uv_ver="$(call version_helper,${UV})" ; \
 	if [[ "$${uv_ver}" != "$(UV_VERSION)" ]]; then \
-		echo "WARNING: Incompatible \`${UV}\` version: $${uv_ver} (expected " \
+		echo "WARNING: Incompatible \`${UV}\` version: $${uv_ver} (expected" \
 			"${UV_VERSION})" ; \
 	fi
 
 .PHONY: env-check-venv
 # target: env-check-venv - Ensure the virtual environment exists
 env-check-venv:
-ifeq ($(wildcard ${VIRTUALENV}),)
-	$(error The virtual environment is missing at the target path: \
-		`${VIRTUALENV}`)
-endif
+	@[[ -d "$(VIRTUALENV)" ]] \
+		|| $(call error_helper,The virtual environment is missing at the target path: \
+			\`$(VIRTUALENV)\`)
 
 .PHONY: env-check-lockfile
 # target: env-check-lockfile - Ensure the lockfile exists
 env-check-lockfile:
-ifeq ($(wildcard ${UV_LOCKFILE}),)
-	$(error The project lockfile does not exist: `${UV_LOCKFILE}`)
-endif
-	$(info Requires that the project lockfile (`uv.lock`) is up-to-date. \
-		If the lockfile needs to be updated, the target will exit with an \
-		error \
-	)
+	@[[ -f "$(UV_LOCKFILE)" ]] \
+		|| $(call error_helper,The project lockfile does not exist: \
+			\`$(UV_LOCKFILE)\`. Run \`make requirements\` to create it)
 
 .PHONY: env-show-python
 # target: env-show-python - Display the environment variables used to configure Python and related tools
 env-show-python:
 	$(info PYTHON_VERSION_FILE -> `$(PYTHON_VERSION_FILE)`)
+	$(info PYTHON_PROJECT_FILE -> `$(PYTHON_PROJECT_FILE)`)
 	$(info UV_VERSION -> `$(UV_VERSION)`)
 	$(info UV_CACHE_DIR -> `$(UV_CACHE_DIR)`)
 	$(info VIRTUALENV -> `$(VIRTUALENV)`)
@@ -298,10 +319,9 @@ ifdef UV_LOCK_EXTRA_OPTS
 	$(info UV_LOCK_EXTRA_OPTS -> `$(UV_LOCK_EXTRA_OPTS)`)
 else
 	$(info UV_LOCK_EXTRA_OPTS:)
-	$(info ${\t}Use "--upgrade" to allow package upgrades, ignoring pinned \
-		versions)
-	$(info ${\t}Use "--upgrade-package=<name>" to allow upgrades for the \
-		specified package)
+	$(info ${\t}Use "--upgrade" to allow package upgrades, ignoring pinned versions)
+	$(info ${\t}Use "--upgrade-package=<name>" to allow upgrades for the specified \
+		package)
 endif
 
 ifdef UV_SYNC_EXTRA_OPTS
@@ -309,10 +329,8 @@ ifdef UV_SYNC_EXTRA_OPTS
 else
 	$(info UV_SYNC_EXTRA_OPTS:)
 	$(info ${\t}Use "--all-extras" to include all optional dependencies)
-	$(info ${\t}Use "--inexact" to keep extraneous packages present in the \
-		environment)
-	$(info ${\t}Use "--reinstall" to refresh all cached data and reinstall \
-		all packages)
+	$(info ${\t}Use "--inexact" to keep extraneous packages present in the environment)
+	$(info ${\t}Use "--reinstall" to refresh all cached data and reinstall all packages)
 endif
 
 ifdef UV_BUILD_EXTRA_OPTS
@@ -363,12 +381,13 @@ endif
 
 .PHONY: env-check-qa
 # target: env-check-qa - Check the requirements for the quality assurance tools
-env-check-qa: env-check-python
-	@$(call which_helper,${DEPTRY})
-	@$(call which_helper,${RUFF})
-	@$(call which_helper,${MYPY})
-	@$(call which_helper,${PYLINT})
-	@$(call which_helper,${PYTEST})
+env-check-qa: env-check-python env-check-venv env-check-lockfile
+	@$(call which_uv_helper,${DEPTRY})
+	@$(call which_uv_helper,${RUFF})
+	@$(call which_uv_helper,${TY})
+	@$(call which_uv_helper,${MYPY})
+	@$(call which_uv_helper,${PYLINT})
+	@$(call which_uv_helper,${PYTEST})
 
 .PHONY: env-show-qa
 # target: env-show-qa - Display the environment variables used to configure the quality assurance tools
@@ -396,21 +415,20 @@ endif
 ifdef PYTEST_EXTRA_OPTS
 	$(info PYTEST_EXTRA_OPTS -> `$(PYTEST_EXTRA_OPTS)`)
 else
-	$(info PYTEST_EXTRA_OPTS: Use "--skip-slow" to exclude slow tests)
+	$(info PYTEST_EXTRA_OPTS: Use "--skip-slow" to skip slow tests)
 endif
 
 ifdef PYTEST_CUSTOM_PATH
 	$(info PYTEST_CUSTOM_PATH -> `$(PYTEST_CUSTOM_PATH)`)
 else
-	$(info PYTEST_CUSTOM_PATH: Use "/path/to/test.py::TestClass::test_method" \
-		to run a single test `test_method` from the suite `TestClass` of \
-		`test.py`)
+	$(info PYTEST_CUSTOM_PATH: Use "/path/to/test.py::TestClass::test_method" to run a \
+		single test `test_method` from the suite `TestClass` of `test.py`)
 endif
 
 ifdef PYTEST_DEPLOYMENT
 	$(info PYTEST_DEPLOYMENT -> `$(PYTEST_DEPLOYMENT)`)
 else
-	$(info PYTEST_DEPLOYMENT: Specify the deployed service URL, e.g., \
+	$(info PYTEST_DEPLOYMENT: Specify the deployed service URL, such as \
 		"http://localhost:8000" for the local environment)
 endif
 
@@ -424,18 +442,16 @@ endif
 .PHONY: venv
 # target: venv - Create a virtual environment
 venv: env-check-python
-ifneq ($(wildcard ${VIRTUALENV}),)
-	$(error A virtual environment already exists at the target path: \
-		`${VIRTUALENV}`)
-endif
+	@[[ ! -d "$(VIRTUALENV)" ]] \
+		|| $(call error_helper,A virtual environment already exists at the target path: \
+			\`$(VIRTUALENV)\`)
 	@$(UV) venv $(UV_CMD_OPTS) --seed "$(VIRTUALENV)"
 
 .PHONY: requirements
 # target: requirements - Update the project's lockfile
 requirements: env-check-python
-# If the project lockfile (`uv.lock`) does not exist, it will be created.
-# If a lockfile is present, its contents will be used as preferences for the
-# resolution process.
+# `uv lock` creates `uv.lock` when the file does not exist. An existing lockfile
+# supplies the preferred versions for the resolution.
 	@$(UV) lock $(UV_CMD_OPTS) $(UV_LOCK_EXTRA_OPTS)
 
 .PHONY: requirements-refresh
@@ -445,17 +461,27 @@ requirements-refresh:
 
 .PHONY: requirements-try
 # target: requirements-try - Perform a dry run of an upgrade without writing the lockfile
-requirements-try:
+requirements-try: env-check-python env-check-lockfile
+	$(call outdated_helper)
+	@echo
 	@$(MAKE) requirements UV_LOCK_EXTRA_OPTS="--upgrade --dry-run"
+
+.PHONY: requirements-bump
+# target: requirements-bump - Raise the `~=` and `>=` constraints of outdated direct dependencies to the latest versions
+requirements-bump: env-check env-check-python env-check-lockfile
+	$(call outdated_helper) \
+		| $(SED) -r 's/^\S+ ([^ []+).*\(latest: v(.+)\)$$/\1 \2/' \
+		| $(UV) run $(UV_CMD_OPTS) --no-progress --script \
+			"$(scriptdir)/bump_requirements.py" "$(PYTHON_PROJECT_FILE)"
 
 .PHONY: requirements-up
 # target: requirements-up - Upgrade packages, ignoring pinned versions
-requirements-up:
+requirements-up: env-check-venv
 	@$(MAKE) requirements UV_LOCK_EXTRA_OPTS="--upgrade"
 	@$(MAKE) install
 
 .PHONY: requirements-check
-# target: requirements-check - List and validate packages installed in an environment
+# target: requirements-check - List and validate the packages installed in the virtual environment
 requirements-check: env-check-python env-check-venv
 	$(info UV_PIP_LIST_FORMAT -> `$(UV_PIP_LIST_FORMAT)`)
 
@@ -469,7 +495,7 @@ requirements-check: env-check-python env-check-venv
 	@$(UV_PIP_LIST) --editable --strict
 
 	@echo -e "\nOutdated packages:"
-	@$(UV) pip list $(UV_CMD_OPTS) --outdated
+	@$(UV) pip list $(UV_PIP_OPTS) --outdated
 
 .PHONY: requirements-tree
 # target: requirements-tree - Display the project's dependency tree
@@ -490,9 +516,8 @@ force-install:
 .PHONY: dist
 # target: dist - Build Python packages
 dist: env-check-python
-# The default build strategy: build a source distribution ("sdist") from the
-# source directory, and a binary distribution ("wheel") from the source
-# distribution.
+# By default, `uv build` builds a source distribution from the source directory and a
+# wheel from that source distribution.
 	@$(UV) build $(UV_CMD_OPTS) $(UV_BUILD_OPTS) $(UV_BUILD_EXTRA_OPTS) \
 		"$(CURDIR)"
 
@@ -510,7 +535,7 @@ docker-info: env-check-docker
 
 .PHONY: docker-build
 # target: docker-build - Build an image from the Dockerfile
-docker-build: env-check-docker
+docker-build: env-check-docker env-check-lockfile
 	@$(DOCKER) buildx build --platform="$(DOCKER_BUILD_PLATFORM)" \
 		$(DOCKER_EXTRA_OPTS) \
 		$(DOCKER_BUILD_ARGS) \
@@ -519,7 +544,7 @@ docker-build: env-check-docker
 	"$(CURDIR)"
 
 .PHONY: docker-run
-# target: docker-run - Create and run a new container from an image (temporarily)
+# target: docker-run - Create and run a container from the image, removed on exit
 docker-run: env-check-docker
 ifndef DOCKER_EXTRA_OPTS
 	$(info DOCKER_EXTRA_OPTS: \
@@ -536,12 +561,12 @@ endif
 	"$(DOCKER_IMAGE_NAME)"
 
 .PHONY: docker-compose
-# target: docker-compose - Create and start containers, start any linked services
+# target: docker-compose - Start the service stack and tear it down on exit
 docker-compose: env-check-docker
 	@$(DOCKER_COMPOSE_EXPORTS) ; \
 	{ \
 		$(DOCKER_COMPOSE) --file "$(DOCKER_COMPOSE_FILE)" up --build ; \
-		$(DOCKER_COMPOSE) --file "$(DOCKER_COMPOSE_FILE)" down ; \
+		$(DOCKER_COMPOSE) --file "$(DOCKER_COMPOSE_FILE)" down --volumes ; \
 	}
 
 .PHONY: docker-logs
@@ -551,14 +576,14 @@ docker-logs: env-check-docker
 		$(DOCKER_COMPOSE) --file "$(DOCKER_COMPOSE_FILE)" logs --follow
 
 .PHONY: docker-shell
-# target: docker-shell - Spawn a shell to the container
+# target: docker-shell - Open a shell in the running container
 docker-shell: env-check-docker
 	@$(DOCKER_COMPOSE_EXPORTS) ; $(DOCKER_COMPOSE) \
 		--file "$(DOCKER_COMPOSE_FILE)" \
 	exec "${DOCKER_SERVICE_NAME}" "${DOCKER_COMMAND}"
 
 .PHONY: docker-clean
-# target: docker-clean - Remove all images, containers, and volumes
+# target: docker-clean - Remove every container and image on the host, and prune anonymous volumes
 docker-clean: env-check-docker
 	@$(DOCKER) ps --all -q | xargs -r $(DOCKER) container rm $(DOCKER_RM_OPTS)
 	@$(DOCKER) system prune $(DOCKER_SYSTEM_PRUNE_OPTS)
@@ -568,14 +593,14 @@ docker-clean: env-check-docker
 
 .PHONY: show-notes
 # target: show-notes - List notes sorted by tag
-show-notes: env-check
+show-notes: env-check env-check-git
 	$(call show_notes_helper, \
 		${GIT} ls-files --cached --others --exclude-standard \
 	)
 
 .PHONY: show-notes-recent
 # target: show-notes-recent - List notes from the GIT_DEPTH most recent commits and modified files
-show-notes-recent: env-check
+show-notes-recent: env-check env-check-git
 	$(call show_notes_helper, \
 		{ \
 			${GIT} log --no-merges --name-only --pretty=format: -n $(GIT_DEPTH) \
@@ -588,7 +613,7 @@ show-notes-recent: env-check
 .PHONY: check-deps
 # target: check-deps - Find unused, missing, and transitive dependencies
 check-deps: env-check-qa
-	@(cd "$(CURDIR)" && $(DEPTRY) \
+	@(cd "$(CURDIR)" && $(UV_RUN) $(DEPTRY) \
 		"$(srcdir)" \
 		"$(testdir)" \
 	)
@@ -596,43 +621,48 @@ check-deps: env-check-qa
 .PHONY: check-ruff
 # target: check-ruff - Lint with Ruff
 check-ruff: env-check-qa
-	@$(RUFF) check "$(srcdir)" "$(testdir)"
+	@$(UV_RUN) $(RUFF) check "$(srcdir)" "$(testdir)" "$(scriptdir)"
+
+.PHONY: check-ty
+# target: check-ty - Perform static type checking with ty
+check-ty: env-check-qa
+	@$(UV_RUN) $(TY) check --project="$(CURDIR)"
 
 .PHONY: check-mypy
 # target: check-mypy - Perform static type checking with Mypy
 check-mypy: env-check-qa
-	@$(MYPY) $(MYPY_OPTS) "$(srcdir)" "$(testdir)"
+	@$(UV_RUN) $(MYPY) $(MYPY_OPTS) "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: check-pylint
 # target: check-pylint - Perform code analysis with Pylint
 check-pylint: env-check-qa
-	@$(PYLINT) $(PYLINT_OPTS) "$(srcdir)" "$(testdir)"
+	@$(UV_RUN) $(PYLINT) $(PYLINT_OPTS) "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: lint
 # target: lint - Run all available code analysis tools
-lint: check-ruff check-mypy check-pylint
+lint: check-ruff check-ty check-mypy check-pylint
 
 .PHONY: check-format
 # target: check-format - Detect unformatted files
 check-format: env-check-qa
-	@$(RUFF) format --check "$(srcdir)" "$(testdir)"
+	@$(UV_RUN) $(RUFF) format --check "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: format
-# target: format - Format all discovered Python files
+# target: format - Sort imports and format all discovered Python files
 format: env-check-qa
-	@$(RUFF) check --select I --fix "$(srcdir)" "$(testdir)"
-	@$(RUFF) format "$(srcdir)" "$(testdir)"
+	@$(UV_RUN) $(RUFF) check --select I --fix "$(srcdir)" "$(testdir)" "$(scriptdir)"
+	@$(UV_RUN) $(RUFF) format "$(srcdir)" "$(testdir)" "$(scriptdir)"
 
 .PHONY: test
-# target: test - Run tests
+# target: test - Run the unit tests
 test: env-check-qa
 	$(call pytest_helper,${PYTEST_UNIT_DIR},:)
 
 .PHONY: autotest
-# target: autotest - Run system tests for the specified deployment
+# target: autotest - Run the system tests
 autotest: env-check-qa
 ifndef PYTEST_DEPLOYMENT
-	$(error PYTEST_DEPLOYMENT: URL of the deployed service is required, e.g., \
+	$(error PYTEST_DEPLOYMENT: Set the URL of the deployed service, such as \
 		"http://localhost:8000" for the local environment)
 else
 	$(info PYTEST_DEPLOYMENT -> `$(PYTEST_DEPLOYMENT)`)
@@ -650,8 +680,8 @@ help: env-check
 		| $(SED) -r "s/^\s*#\s*target\s*:\s*//g"
 
 .PHONY: clean
-# target: clean - Clean the project's directory
-clean: env-check
+# target: clean - Remove the tool caches and bytecode
+clean:
 	@find "$(CURDIR)" \
 		-name ".mypy_cache" -type d -exec rm -vrf {} + -o \
 		-name ".pytest_cache" -type d -exec rm -vrf {} + -o \
@@ -660,8 +690,8 @@ clean: env-check
 		-name "*.py[cod]" -exec rm -vf {} +
 
 .PHONY: distclean
-# target: distclean - Clean the project's build output
-distclean: env-check
+# target: distclean - Remove the build and distribution output
+distclean:
 	@find "$(CURDIR)" \
 		-path "$(VIRTUALENV)" -prune -o \
 		-name "*.dist-info" -type d -exec rm -vrf {} + -o \
@@ -672,8 +702,8 @@ distclean: env-check
 		"$(distdir)"
 
 .PHONY: mostlyclean
-# target: mostlyclean - Delete almost everything
-mostlyclean: env-check clean distclean
+# target: mostlyclean - Run both cleanups, then delete the virtual environment and the uv cache
+mostlyclean: clean distclean
 	@find "$(CURDIR)" -name .DS_Store -exec rm -vf {} +
 	@if [[ -n "$(UV_CACHE_DIR)" ]]; then \
 		rm -vrf "$(UV_CACHE_DIR)"; \

@@ -8,12 +8,12 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 fi
 
 #---
-# Helper script to activate Python virtual environments
+# Activates a Python virtual environment in the current shell
 #---
-# Searches for virtualenv in the following order:
-# * User-specified path (if </path/to/venv> were given).
-# * Docker environment path ({{ cookiecutter.docker_prefix }}).
-# * Local project path (.venv).
+# Searches for a virtual environment in the following order:
+# * The user-specified path, if </path/to/venv> is given.
+# * The Docker environment path, `{{ cookiecutter.docker_prefix }}/.venv`.
+# * The `.venv` directory in the current working directory.
 
 
 __activate_venv() {
@@ -22,8 +22,8 @@ __activate_venv() {
     local secondary_prefix="${PWD}/.venv"
     local prefix=""
 
-    # A user-specified path is authoritative: if it does not exist,
-    # do not fall back to the other candidates.
+    # A user-specified path is authoritative. The function does not fall back to the
+    # other candidates when that path does not exist.
     if [[ -n "${user_prefix}" && ! -d "${user_prefix}" ]]; then
         echo "ERROR: Virtual environment not found at user-specified path:" \
              "\`${user_prefix}\`" \

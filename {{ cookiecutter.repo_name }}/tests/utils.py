@@ -2,12 +2,35 @@ from __future__ import annotations
 
 import io
 import json
-from typing import Any
+from typing import Any, Never
+
+import pytest
 
 type LogRecord = dict[str, Any]
 
 
+def fail_without_traceback(reason: str) -> Never:
+    """Fails the current test, reporting `reason` with no traceback.
+
+    Also omits the chain of an exception being handled.
+    """
+    raise pytest.fail.Exception(reason, pytrace=False) from None
+
+
+# The functions below set the local variable `__tracebackhide__` to `True`. Pytest then
+# excludes their frames from the traceback. The traceback therefore ends at the line of
+# the calling test.
+
+
 def parse_json_lines(stream: io.StringIO) -> list[LogRecord]:
+    """Parses captured JSON log lines into records, skipping blank lines.
+
+    Raises:
+        json.JSONDecodeError: If a line is not valid JSON.
+        AssertionError: If a line holds a JSON value other than an object.
+    """
+    __tracebackhide__ = True  # pylint: disable=unused-variable
+
     records: list[LogRecord] = []
 
     for line in stream.getvalue().splitlines():
@@ -15,7 +38,7 @@ def parse_json_lines(stream: io.StringIO) -> list[LogRecord]:
             continue
 
         obj = json.loads(line)
-        assert isinstance(obj, dict), f"expected a JSON object, not {type(obj)!r}"
+        assert isinstance(obj, dict), f"expected a JSON object, got {type(obj)!r}"
         records.append(obj)
 
     return records
@@ -31,28 +54,30 @@ def assert_log_event(
         match: Substring searched for within each record's `event` message.
         count: Exact number of matching records the stream must contain.
         **fields: Expected values that every matching record must hold, compared by
-            equality (e.g. `level="error"`).
+            equality. For example, `level="error"` requires error records.
 
     Returns:
         The matching records in capture order, for further inspection by the caller.
 
     Raises:
         AssertionError: If the stream does not hold exactly `count` records matching
-        `match`, or a matching record's field does not equal its expected value.
+            `match`, or a matching record's field does not equal its expected value.
     """
+    __tracebackhide__ = True  # pylint: disable=unused-variable
+
     matches = [
         record for record in parse_json_lines(stream) if match in record["event"]
     ]
 
     assert len(matches) == count, (
-        f"expected {count} log event(s) matching {match!r}, found {len(matches)}"
+        f"expected {count} log event(s) matching {match!r}, got {len(matches)}"
     )
 
     for record in matches:
         for key, expected in fields.items():
             actual = record.get(key)
             assert actual == expected, (
-                f"log event {match!r}: expected {key}={expected!r}, got {actual!r}"
+                f"log event {match!r}: expected `{key}` {expected!r}, got {actual!r}"
             )
 
     return matches
@@ -71,9 +96,9 @@ def assert_log_exception(
     Args:
         stream: JSON log lines captured by the `cap_json_logs` fixture.
         match: Substring searched for within the record's `event` message.
-        exc_type: Expected exception class name, e.g. "KeyError".
-        exc_value: If given, the expected `str(exc)` of the matched exception. For
-            `KeyError` this retains the surrounding quotes, e.g. "'missing'".
+        exc_type: Expected exception class name, such as "KeyError".
+        exc_value: If given, the expected `str(exc)` of the matched exception. For a
+            `KeyError`, the value keeps the surrounding quotes, such as "'missing'".
         level: Expected record `level`. Defaults to "error".
 
     Returns:
@@ -81,8 +106,10 @@ def assert_log_exception(
 
     Raises:
         AssertionError: If no single record matches, the record carries no `exception`,
-        or the chain lacks an entry of `exc_type`.
+            or the chain lacks an entry of `exc_type`.
     """
+    __tracebackhide__ = True  # pylint: disable=unused-variable
+
     [record] = assert_log_event(stream, match, count=1, level=level)
 
     chain = record.get("exception")
@@ -101,8 +128,8 @@ def assert_log_exception(
             entry["exc_value"] for entry in chain if entry["exc_type"] == exc_type
         ]
         assert exc_value in values, (
-            f"log event {match!r}: expected exc_value {exc_value!r} for {exc_type!r}, "
-            f"got {values!r}"
+            f"log event {match!r}: expected `exc_value` {exc_value!r} "
+            f"for {exc_type!r}, got {values!r}"
         )
 
     return record
@@ -126,6 +153,10 @@ def _database_url(
     database: str | None = _DATABASE,
     query: str = "",
 ) -> str:
+    """Builds a database URL from components, omitting each component set to None.
+
+    A None host also omits the port.
+    """
     if host is None:
         authority = ""
     else:
@@ -138,3 +169,14 @@ def _database_url(
 
 
 VALID_DATABASE_URL = _database_url()
+
+# URLs that the parser rejects for a malformed port that contains the `_PASSWORD` text.
+# A test uses them to assert that the password stays out of the resulting error.
+MALFORMED_PORT_DATABASE_URLS = (
+    pytest.param(
+        f"{_DRIVER}://{_USER}:{_PASSWORD}/{_DATABASE}", id="missing-at-separator"
+    ),
+    pytest.param(
+        _database_url(password=f"p@ss:{_PASSWORD}"), id="unescaped-at-and-colon"
+    ),
+)

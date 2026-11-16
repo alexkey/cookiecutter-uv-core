@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 import click
 
@@ -10,11 +11,16 @@ from {{ cookiecutter.repo_name }}.app import (
 )
 from {{ cookiecutter.repo_name }}.app.cli._lazy import LazyGroup
 
+if TYPE_CHECKING:
+    from typing import Never
+
 __all__ = [
     "cli",
     "main",
 ]
 
+# Maps each subcommand name to the dotted path of its `click.Command`. `LazyGroup`
+# imports the module only when the command is resolved.
 _SUBCOMMANDS = MappingProxyType(
     {
         "run": "{{ cookiecutter.repo_name }}.app.cli.commands.run.run_cmd",
@@ -32,5 +38,6 @@ def cli() -> None:
     pass
 
 
-def main() -> None:
-    cli()
+def main() -> Never:
+    """Runs the command-line interface."""
+    cli.main()

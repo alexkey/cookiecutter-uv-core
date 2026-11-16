@@ -11,7 +11,7 @@ __all__ = [
 
 
 def repr_obj(obj: Any) -> str:
-    """Returns a printable representation of an object with memory address."""
+    """Returns a representation of `obj` with its class name and memory address."""
     cls_name = type(obj).__name__
     addr = hex(id(obj))
 

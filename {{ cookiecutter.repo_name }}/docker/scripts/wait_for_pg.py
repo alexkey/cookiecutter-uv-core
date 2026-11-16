@@ -1,12 +1,16 @@
-#!/usr/bin/env -S uv run --no-progress
+#!/usr/bin/env -S uv run --no-progress --script
 # /// script
-# requires-python = "~=3.13.6"
-# dependencies = ["sqlalchemy[postgresql-asyncpg]~=2.0.41"]
+# requires-python = "~={{ cookiecutter.python_version }}"
+# dependencies = ["sqlalchemy[postgresql-asyncpg]~=2.1.8"]
 # ///
 
 # pylint: disable=broad-exception-caught
 
-"""Wait for PostgreSQL database to become available."""
+"""Waits for the PostgreSQL database to accept connections.
+
+Exits with status 0 once the database responds, 1 if the URL is unset or invalid, and
+2 if every attempt fails.
+"""
 
 from __future__ import annotations
 
@@ -38,14 +42,15 @@ logger = logging.getLogger(Path(__file__).name)
 
 
 async def wait_for_db(engine: AsyncEngine, retries: int, delay: float) -> bool:
+    """Returns True once a probe query succeeds, or False after `retries` failures."""
     for attempt in range(1, retries + 1):
         try:
             async with engine.connect() as conn:
                 await conn.execute(sa_text("SELECT 1"))
-            logger.info("Database is ready")
+            logger.info("Database ready")
             return True
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Database not ready (attempt %d/%d): %r", attempt, retries, exc
             )
@@ -57,13 +62,14 @@ async def wait_for_db(engine: AsyncEngine, retries: int, delay: float) -> bool:
 
 async def main() -> int:
     if not DB_URL:
-        logger.error("%s environment variable is not set", DB_URL_VARNAME)
+        logger.error("Environment variable `%s` not set", DB_URL_VARNAME)
         return 1
 
     try:
         url = make_url(DB_URL)
-    except ArgumentError as exc:
-        logger.error("Invalid %s: %r", DB_URL_VARNAME, exc)
+    except ArgumentError, ValueError:
+        # The error for a malformed port quotes URL text that can include the password.
+        logger.error("Invalid `%s`", DB_URL_VARNAME)
         return 1
 
     safe_url = url.render_as_string(hide_password=True)

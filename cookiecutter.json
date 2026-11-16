@@ -6,7 +6,7 @@
 
     "version": "0.1.0",
     "brief": "Just foo bar",
-    "description": "A modern Python project template powered by cookiecutter that provides a comprehensive\ndevelopment environment using uv for dependency management.\n\nThe template includes tools and configurations for building, testing,\npackaging, and distributing Python applications with Docker support.\nIt features integrated quality assurance tools, testing infrastructure, dependency\nanalysis, and containerization capabilities with multi-platform support.",
+    "description": "A Python project template for Cookiecutter that sets up a development environment\nwith uv for dependency management.\n\nThe template includes tools and configurations for building, testing, packaging, and\ndistributing Python applications, and for running them in Docker. It integrates\nquality assurance tools, testing infrastructure, dependency analysis, and container\nbuilds for several platforms.",
     "author_name": "John Doe",
     "author_email": "john.doe@example.com",
     "url": "https://example.com",
@@ -14,15 +14,20 @@
     "license": "BSD-3-Clause",
     "year": "{% now 'local', '%Y' %}",
 
-    "uv_version": "0.11.23",
-    "python_version": "3.13.14",
+    "uv_version": "0.13.8",
+    "python_version": "3.15.2",
     "python_majmin": "{{ cookiecutter.python_version.rsplit('.', 1)[0] }}",
 
     "docker_build_platform": "linux/amd64",
     "docker_compose_name": "{{ cookiecutter.service_name }}",
     "docker_prefix": "/opt/{{ cookiecutter.service_name }}",
 
-    "redis_image_tag": "8.8-alpine",
-    "postgres_image_tag": "18.4-alpine",
-    "postgres_user": "database"
+    "redis_image_tag": "8.10.3-alpine",
+    "postgres_image_tag": "18.7-alpine",
+    "postgres_user": "database",
+
+    "_copy_without_render": [
+        ".agents/skills/*.md",
+        ".agents/skills/*.yaml"
+    ]
 }

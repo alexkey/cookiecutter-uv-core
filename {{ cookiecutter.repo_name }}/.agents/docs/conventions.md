@@ -1,0 +1,115 @@
+# Code conventions
+
+Read this before writing or reviewing Python code. These conventions describe the
+existing code. Match the surrounding module when it is more specific. The analysis
+tools enforce part of them: Ruff, ty, Mypy, and Pylint all run under `make lint`.
+
+## Rules
+
+1. Write code for the interpreter pinned in `.python-version`. The code base uses
+   syntax that older interpreters reject: type parameter lists such as
+   `def configure[**P, R](...)`, `type` aliases, `except A, B:` without parentheses,
+   and `lazy` imports. Do not rewrite these for interpreters older than the pinned
+   one.
+2. Annotate every function signature. The code must pass both type checkers, ty and
+   Mypy.
+3. Format with `make format`, which sorts imports and applies the Ruff formatter. Do
+   not format by hand against it.
+4. Suppress a finding on the line that causes it and for the specific code only. Name
+   every tool that reports it: `# noqa: <code>` for Ruff,
+   `# pylint: disable=<name>` for Pylint, and
+   `# type: ignore[<mypy-code>, ty:<ty-rule>]` for both type checkers in one comment.
+5. Use absolute imports from `{{ cookiecutter.repo_name }}`, not relative imports.
+
+## Module structure
+
+- Most modules start with `from __future__ import annotations` and keep imports that
+  only annotations need under `if TYPE_CHECKING:`. Types that Pydantic resolves at
+  runtime stay regular imports, such as the field types in `app/core/config.py`.
+- Modules on the CLI's startup path import with `lazy` the names that only function
+  bodies use. Rule 2 of `architecture.md` lists those modules and the exceptions.
+- Modules declare their public names in `__all__`.
+- A leading underscore marks a private name or a private module, such as
+  `_decorators.py`. Tests may import private names of the module under test.
+- Names that most callers need are re-exported from the package root,
+  `src/{{ cookiecutter.repo_name }}/__init__.py`.
+- Module-level constants are `UPPER_CASE`.
+
+## Functions and errors
+
+- Optional behavior switches are keyword-only arguments after `*`. Two recur across
+  the code base: `raise_on_exc` selects between raising and logging an error, and
+  `verbose` enables lifecycle logging.
+- Application-layer exception classes belong in
+  `src/{{ cookiecutter.repo_name }}/app/_exceptions.py`.
+- An error message must not include a secret. Raise a new exception with `from None`
+  where the original exception could carry one, as `check_database_url()` does.
+  `from None` drops the exception chain.
+- Ruff and Pylint both report a broad `except Exception`. Suppress both findings on
+  the line of a required broad handler, as rule 4 describes.
+  `tests/system/conftest.py` holds examples.
+
+## Log and exception messages
+
+- Exception and assertion messages start in lowercase and end without a period. A
+  wrong type reads "<subject> must be <expected type>, not <actual type>", as in
+  "log level must be a string or an integer, not <class 'bool'>". A wrong value reads
+  "invalid <subject>: <value> (expected <what>)", as in "invalid log level: 'NOPE'
+  (expected one of ...)". Assertion messages in the test helpers read
+  "expected <what>, got <actual>".
+- Articles in log and exception messages follow natural English and add no words that
+  do not make the message clearer:
+  - Use "a" or "an" before a kind of value that the message describes in words, as
+    in "must be a string or an integer" and "must include a host or a socket
+    directory".
+  - Omit the article before a Python type name, as in "must be `str` or `int`" and
+    "must name `click.Command`".
+  - Omit "the" before a subject that names a parameter, an argument, or a setting, as
+    in "log level must be ..." and "database URL must ...".
+  - Omit the article before the subject of a log message, as in "Database engine
+    created".
+  - Use "the" before a specific object or value that a natural-language phrase
+    describes, as in "must use the `postgresql+asyncpg` driver" and "Error disposing
+    the database engine".
+  - Omit "the" where it only lengthens the message, as in "cannot create schema
+    `<name>`" and "Database error during transaction".
+- Log messages start in sentence case and end without a period. The subject comes
+  first, without auxiliary verbs, as in "Transaction committed". A failed operation
+  reads "Error <gerund> <object>", as in "Error creating a database engine". An error
+  inside a block reads "<kind> during <operation>", as in "Database error during
+  transaction".
+- Details follow a colon and a space, as in "Database engine created: %r".
+- Names, options, environment variables, paths, and URLs appear in backticks, as in
+  "Environment variable `{{ cookiecutter.env_prefix }}DATABASE_URL` not set". Input
+  values, objects, and exceptions appear in their `repr()` form, through `!r` or `%r`.
+- Log calls pass their arguments to `%s` and `%r` placeholders instead of formatting
+  the message first. `filter_by_level` then drops a record below the configured level
+  before any formatting runs.
+- Tests match the distinctive part of a message, such as its subject and the
+  offending value, not its full text.
+
+## Docstrings and comments
+
+- Docstrings follow the Google style. The one-line summary uses the descriptive third
+  person, as in "Returns the cached settings." `Args:`, `Returns:`, `Yields:`, and
+  `Raises:` sections follow as needed.
+- Pylint does not require docstrings. Write one for public functions and classes whose
+  behavior, errors, or side effects are not evident from the signature.
+- Comments explain why the code is the way it is: invariants, constraints, and
+  tradeoffs. Do not restate what the code does.
+- Source notes use the form `TAG: text` or `TAG(author): text`, where TAG is one of
+  DEBUG, FIXME, TODO, or XXX. `make show-notes` lists them.
+
+## Formatting and limits
+
+- Ruff formats with double quotes and its default line length, because `ruff.toml`
+  sets no other. Pylint reports lines longer than the `max-line-length` in `pylintrc`.
+- Pylint's design limits, such as the maximum number of arguments, branches, and
+  statements, are set under `[DESIGN]` in `pylintrc`.
+
+## Scripts
+
+Files under `etc/scripts/` and `docker/scripts/` are standalone scripts with inline
+dependency metadata, run through `uv run --script`. They do not import the package,
+and the package does not import them. `etc/scripts/` is formatted and analyzed by the
+same targets as `src/` and `tests/`.
